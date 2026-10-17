@@ -45,10 +45,20 @@ class SimulationRequest(BaseModel):
 
 class SimulationResponse(BaseModel):
     area_id: int
+    area_name: Optional[str] = None
     intervention_type: str
+    intervention_value: float
     before_uis: float
     after_uis: float
     uis_change: float
     affected_indicators: list[dict]
+    estimated_cost: Optional[float] = None
+    budget_provided: Optional[float] = None
+    budget_feasible: Optional[bool] = None
+    max_units_within_budget: Optional[float] = None
+    cost_efficiency_roi: Optional[float] = None
     assumptions: list[str]
     limitations: list[str]
+    model_note: Optional[str] = None
+
+    model_config = {"protected_namespaces": ()}

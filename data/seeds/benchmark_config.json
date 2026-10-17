@@ -1,0 +1,50 @@
+{
+  "methodology_version": "v1.0",
+  "indicators": [
+    {
+      "name": "hospital_density",
+      "category": "Healthcare",
+      "unit": "per_10000_people",
+      "direction": "positive",
+      "benchmark_min": 0,
+      "benchmark_max": 20,
+      "benchmark_source": "WHO Guidelines + India Planning Commission"
+    },
+    {
+      "name": "school_density",
+      "category": "Education",
+      "unit": "per_10000_people",
+      "direction": "positive",
+      "benchmark_min": 0,
+      "benchmark_max": 10,
+      "benchmark_source": "India RTE norms"
+    },
+    {
+      "name": "road_density",
+      "category": "Transport",
+      "unit": "km_per_km2",
+      "direction": "positive",
+      "benchmark_min": 0,
+      "benchmark_max": 15,
+      "benchmark_source": "Urban planning reference"
+    },
+    {
+      "name": "aqi",
+      "category": "Environment",
+      "unit": "aqi_value",
+      "direction": "negative",
+      "benchmark_min": 0,
+      "benchmark_max": 200,
+      "benchmark_source": "CPCB AQI standards"
+    },
+    {
+      "name": "crime_rate",
+      "category": "Safety",
+      "unit": "per_100000_people",
+      "direction": "negative",
+      "benchmark_min": 0,
+      "benchmark_max": 500,
+      "benchmark_source": "NCRB statistical reference"
+    }
+  ]
+}
