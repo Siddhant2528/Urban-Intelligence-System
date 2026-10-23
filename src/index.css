@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-canvas: #f5f8f6;
+  --color-surface: #ffffff;
+  --color-ink: #1d2c25;
+  --color-muted: #5c6b63;
+  --color-line: #d9e3dc;
+  --color-brand: #176b53;
+  --color-brand-hover: #12543f;
+  --color-brand-soft: #e8f3ee;
+  --color-accent: #a96d12;
+  --color-accent-soft: #fbf2df;
+  --color-success: #256b4f;
+  --color-success-soft: #e9f3ed;
+  --color-warning: #8c5b08;
+  --color-warning-soft: #fbf2df;
+  --color-danger: #a23d36;
+  --color-danger-soft: #f9ecea;
+  --color-info: #356778;
+  --color-info-soft: #eaf2f4;
+  --font-sans: 'Aptos', 'Segoe UI', sans-serif;
+  --spacing-page: 1.5rem;
+  --spacing-section: 2rem;
+  --radius-control: 0.375rem;
+  --radius-card: 0.5rem;
+  --shadow-card: 0 1px 2px rgb(29 44 37 / 5%), 0 4px 12px rgb(29 44 37 / 3%);
+  --shadow-raised: 0 8px 24px rgb(29 44 37 / 10%);
+}
+
+@media (max-width: 639px) {
+  :root {
+    --spacing-page: 1rem;
+    --spacing-section: 1.5rem;
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  a[href],
+  button:not(:disabled) {
+    transition-property: color, background-color, border-color, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+
+  a[href]:active,
+  button:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    color: var(--color-ink);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  h1 {
+    font-size: 2rem;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.35;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
