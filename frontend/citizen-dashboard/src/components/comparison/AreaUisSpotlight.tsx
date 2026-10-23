@@ -8,6 +8,7 @@ interface AreaUisSpotlightProps {
   areaBName: string
   areaBUis: number | null
   scale?: number
+  isBackendData?: boolean
 }
 
 export function AreaUisSpotlight({
@@ -16,6 +17,7 @@ export function AreaUisSpotlight({
   areaBName,
   areaBUis,
   scale = 100,
+  isBackendData = false,
 }: AreaUisSpotlightProps) {
   // Radial calculation for SVG arc (r=42, circumference ~ 264)
   const radius = 42
@@ -51,7 +53,7 @@ export function AreaUisSpotlight({
             </p>
           </div>
         </div>
-        <Badge tone="warning">DEMO BENCHMARK</Badge>
+        <Badge tone="warning">{isBackendData ? 'ESTIMATED INPUTS' : 'DEMO BENCHMARK'}</Badge>
       </div>
 
       {/* Head to Head Area UIS Cards */}

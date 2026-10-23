@@ -28,9 +28,17 @@ router = APIRouter(prefix="/areas", tags=["Areas"])
 
 
 @router.get("/")
-def list_areas(db: Session = Depends(get_db)):
-    """Get all municipal wards with boundary GeoJSON and demographics."""
-    areas = area_repo.get_all_areas(db)
+def list_areas(
+    name: Optional[str] = Query(None, description="Filter by area name or slug"),
+    db: Session = Depends(get_db)
+):
+    """Get all municipal wards with boundary GeoJSON and demographics. Supports name/slug filtering."""
+    if name:
+        resolved = area_repo.resolve_area(db, name)
+        areas = [resolved] if area_repo.is_city_area(resolved) else []
+    else:
+        areas = area_repo.get_city_areas(db)
+
     results = []
     for a in areas:
         results.append({
@@ -91,27 +99,25 @@ def create_area(
 
 @router.get("/compare")
 async def compare_areas(
-    area_ids: str = Query(..., description="Comma-separated IDs of areas to compare (e.g. '1,2')"),
+    area_ids: str = Query(..., description="Comma-separated IDs or names of areas to compare (e.g. '1,2' or 'cidco,satpur')"),
     db: Session = Depends(get_db),
 ):
     """
     Compare 2 or more areas side-by-side on overall UIS and indicator categories.
+    Accepts both integer IDs and area slug/name strings.
     Includes an AI/rule-based comparative narrative explaining the equity gap.
     """
-    try:
-        parsed_ids = [int(i.strip()) for i in area_ids.split(",") if i.strip()]
-    except ValueError:
-        raise CalculationException("area_ids parameter must be comma-separated integers.")
-
-    if len(parsed_ids) < 2:
+    raw_tokens = [i.strip() for i in area_ids.split(",") if i.strip()]
+    if len(raw_tokens) < 2:
         raise CalculationException("At least 2 area IDs are required for comparative analysis.")
 
     comparison_data = []
-    for aid in parsed_ids:
-        area = area_repo.get_area_by_id(db, aid)
+    for token in raw_tokens:
+        area = area_repo.resolve_area(db, token)
         if not area:
-            raise EntityNotFoundException("Area", aid)
+            raise EntityNotFoundException("Area", token)
 
+        aid = area.id
         uis = uis_repo.get_latest_area_uis(db, aid)
         scores_raw = indicator_repo.get_indicator_scores_for_area(db, aid)
         weights = indicator_repo.get_latest_weights(db, aid)
@@ -158,9 +164,9 @@ async def compare_areas(
 
 
 @router.get("/{area_id}")
-def get_area(area_id: int, db: Session = Depends(get_db)):
-    """Get single ward details including boundary GeoJSON."""
-    area = area_repo.get_area_by_id(db, area_id)
+def get_area(area_id: str, db: Session = Depends(get_db)):
+    """Get single ward details including boundary GeoJSON by ID or name slug."""
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
     return {
@@ -175,19 +181,20 @@ def get_area(area_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{area_id}/facilities")
 def get_area_facilities(
-    area_id: int,
+    area_id: str,
     facility_type: Optional[str] = Query(None, description="Filter: hospital, school, police, transit_stop"),
     db: Session = Depends(get_db),
 ):
     """
     Get all physical facilities (POIs) spatially situated within this ward.
+    Accepts integer ID or name slug.
     Formats coordinates as {lat, lng} for direct map rendering in the frontend.
     """
-    area = area_repo.get_area_by_id(db, area_id)
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
 
-    facilities = area_repo.get_facilities_in_area(db, area_id, facility_type=facility_type)
+    facilities = area_repo.get_facilities_in_area(db, area.id, facility_type=facility_type)
 
     results = []
     for f in facilities:
@@ -208,7 +215,7 @@ def get_area_facilities(
         })
 
     return {
-        "area_id": area_id,
+        "area_id": area.id,
         "area_name": area.name,
         "total_facilities": len(results),
         "facilities": results,
@@ -216,12 +223,13 @@ def get_area_facilities(
 
 
 @router.get("/{area_id}/accessibility")
-def get_area_accessibility(area_id: int, db: Session = Depends(get_db)):
+def get_area_accessibility(area_id: str, db: Session = Depends(get_db)):
     """
     Get spatial accessibility coverage percentages for this ward across categories
     (Healthcare, Education, Transport, Safety) using 2 km radius buffer analysis.
+    Accepts integer ID or name slug.
     """
-    area = area_repo.get_area_by_id(db, area_id)
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
 
@@ -252,20 +260,20 @@ def get_area_accessibility(area_id: int, db: Session = Depends(get_db)):
         })
 
     return {
-        "area_id": area_id,
+        "area_id": area.id,
         "area_name": area.name,
         "accessibility_metrics": accessibility_metrics,
     }
 
 
 @router.get("/{area_id}/uis")
-def get_area_uis(area_id: int, db: Session = Depends(get_db)):
-    """Get latest Area UIS calculation score."""
-    area = area_repo.get_area_by_id(db, area_id)
+def get_area_uis(area_id: str, db: Session = Depends(get_db)):
+    """Get latest Area UIS calculation score by ID or name slug."""
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
 
-    uis = uis_repo.get_latest_area_uis(db, area_id)
+    uis = uis_repo.get_latest_area_uis(db, area.id)
     if not uis:
         raise EntityNotFoundException("AreaUIS Score", f"Area {area_id}")
 
@@ -280,18 +288,30 @@ def get_area_uis(area_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{area_id}/calculate")
-async def trigger_area_calculation(area_id: int, db: Session = Depends(get_db)):
-    """Trigger the complete Area UIS calculation pipeline."""
-    result = await area_service.calculate_full_area_uis(db, area_id)
+async def trigger_area_calculation(
+    area_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_government_user),
+):
+    """Trigger the complete Area UIS calculation pipeline by ID or name slug."""
+    area = area_repo.resolve_area(db, area_id)
+    if not area:
+        raise EntityNotFoundException("Area", area_id)
+
+    result = await area_service.calculate_full_area_uis(db, area.id)
     return {"status": "success", "result": result}
 
 
 @router.get("/{area_id}/profile")
-def get_development_profile(area_id: int, db: Session = Depends(get_db)):
-    """Get the latest AI-generated development profile for an area."""
+def get_development_profile(area_id: str, db: Session = Depends(get_db)):
+    """Get the latest AI-generated development profile for an area by ID or name slug."""
+    area = area_repo.resolve_area(db, area_id)
+    if not area:
+        raise EntityNotFoundException("Area", area_id)
+
     profile = (
         db.query(DevelopmentProfile)
-        .filter(DevelopmentProfile.area_id == area_id)
+        .filter(DevelopmentProfile.area_id == area.id)
         .order_by(DevelopmentProfile.generated_at.desc())
         .first()
     )
@@ -301,60 +321,64 @@ def get_development_profile(area_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{area_id}/priority")
-def get_area_priority(area_id: int, db: Session = Depends(get_db)):
-    """Get priority intervention scores for all indicators in an area."""
-    priorities = uis_repo.get_priority_scores(db, area_id)
+def get_area_priority(area_id: str, db: Session = Depends(get_db)):
+    """Get priority intervention scores for all indicators in an area by ID or name slug."""
+    area = area_repo.resolve_area(db, area_id)
+    if not area:
+        raise EntityNotFoundException("Area", area_id)
+
+    priorities = uis_repo.get_priority_scores(db, area.id)
     if not priorities:
         raise EntityNotFoundException("PriorityScores", f"Area {area_id}")
     return priorities
 
 
 @router.get("/{area_id}/insights")
-async def get_area_insights(area_id: int, db: Session = Depends(get_db)):
+async def get_area_insights(area_id: str, db: Session = Depends(get_db)):
     """
-    Get or generate an executive qualitative narrative explaining ward performance.
+    Get or generate an executive qualitative narrative explaining ward performance by ID or name slug.
     """
-    area = area_repo.get_area_by_id(db, area_id)
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
 
-    uis = uis_repo.get_latest_area_uis(db, area_id)
+    uis = uis_repo.get_latest_area_uis(db, area.id)
     if not uis:
         raise EntityNotFoundException("AreaUIS Score", f"Area {area_id}. Calculate first.")
 
     existing = (
         db.query(AIInsight)
-        .filter(AIInsight.area_id == area_id, AIInsight.insight_type == "explanation")
+        .filter(AIInsight.area_id == area.id, AIInsight.insight_type == "explanation")
         .order_by(AIInsight.generated_at.desc())
         .first()
     )
     if existing:
         return {
-            "area_id": area_id,
+            "area_id": area.id,
             "area_name": area.name,
             "narrative": existing.content,
             "model_used": existing.model_used,
             "generated_at": existing.generated_at,
         }
 
-    scores_raw = indicator_repo.get_indicator_scores_for_area(db, area_id)
+    scores_raw = indicator_repo.get_indicator_scores_for_area(db, area.id)
     scores_data = [{"category": s.category, "score": s.score} for s in scores_raw]
     profile = (
         db.query(DevelopmentProfile)
-        .filter(DevelopmentProfile.area_id == area_id)
+        .filter(DevelopmentProfile.area_id == area.id)
         .order_by(DevelopmentProfile.generated_at.desc())
         .first()
     )
     constraints = profile.profile_json.get("constraints", []) if profile else []
 
     narrative_text = await generate_area_narrative(
-        db, area_id=area_id, area_name=area.name,
+        db, area_id=area.id, area_name=area.name,
         area_uis=uis.score, indicator_scores=scores_data,
         constraints=constraints,
     )
 
     return {
-        "area_id": area_id,
+        "area_id": area.id,
         "area_name": area.name,
         "narrative": narrative_text,
         "model_used": "gemini-1.5-flash",
@@ -362,23 +386,23 @@ async def get_area_insights(area_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{area_id}/history")
-def get_area_history(area_id: int, db: Session = Depends(get_db)):
+def get_area_history(area_id: str, db: Session = Depends(get_db)):
     """
-    Retrieve historical timeline of Area UIS scores for longitudinal trend charts.
+    Retrieve historical timeline of Area UIS scores for longitudinal trend charts by ID or name slug.
     """
-    area = area_repo.get_area_by_id(db, area_id)
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
 
     records = (
         db.query(AreaScoreHistory)
-        .filter(AreaScoreHistory.area_id == area_id)
+        .filter(AreaScoreHistory.area_id == area.id)
         .order_by(AreaScoreHistory.recorded_at.asc())
         .all()
     )
 
     return {
-        "area_id": area_id,
+        "area_id": area.id,
         "area_name": area.name,
         "total_historical_snapshots": len(records),
         "timeline": [

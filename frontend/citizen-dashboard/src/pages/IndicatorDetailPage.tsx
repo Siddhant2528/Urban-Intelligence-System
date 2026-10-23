@@ -9,15 +9,21 @@ import {
   SectionHeader,
 } from '../components/common'
 import { demoData } from '../data/demoData'
+import { useApiData } from '../context/ApiDataContext'
 
 function IndicatorDetailPage() {
   const { id, indicatorId } = useParams<{ id: string; indicatorId: string }>()
-  const area = demoData.areas.find((item) => item.id === id)
-  const indicator = demoData.indicators.find((item) => item.id === indicatorId)
+  const { data } = useApiData()
+
+  const allowDemoFallback = data.dataStatus === 'demo'
+  const area = data.areas.find((item) => item.id === id) ?? (allowDemoFallback ? demoData.areas.find((item) => item.id === id) : undefined)
+  const indicator = data.indicators.find((item) => item.id === indicatorId) ?? (allowDemoFallback ? demoData.indicators.find((item) => item.id === indicatorId) : undefined)
   const details = demoData.indicatorDetails.find((item) => item.indicatorId === indicatorId)
-  const score = demoData.areaIndicators.find(
+  const score = data.areaIndicators.find(
     (item) => item.areaId === id && item.indicatorId === indicatorId,
-  )
+  ) ?? (allowDemoFallback ? demoData.areaIndicators.find(
+    (item) => item.areaId === id && item.indicatorId === indicatorId,
+  ) : undefined)
 
   if (!area || !indicator || !details || !score) {
     return (
@@ -28,7 +34,7 @@ function IndicatorDetailPage() {
         <div className="mt-6 rounded-card border border-line bg-surface shadow-card">
           <EmptyState
             title="Indicator details not found"
-            description="Choose an indicator from a demo area to view its details."
+            description="Choose an indicator from an available ward to view its details."
           />
         </div>
       </div>
@@ -54,7 +60,7 @@ function IndicatorDetailPage() {
             description={`${area.name} · Indicator Details`}
           />
           <MetricCard
-            detail={<Badge tone="warning">DEMO VALUE</Badge>}
+            detail={<Badge tone="warning">{allowDemoFallback ? 'DEMO VALUE' : 'ESTIMATED INPUTS'}</Badge>}
             label="Indicator score"
             value={
               <>
@@ -69,7 +75,11 @@ function IndicatorDetailPage() {
       <section aria-labelledby="description-title" className="mt-10">
         <SectionHeader id="description-title" level={2} title="Description" />
         <Card className="mt-4">
-          <p className="text-sm leading-6 text-muted">{details.demoDescription}</p>
+            <p className="text-sm leading-6 text-muted">
+              {allowDemoFallback
+                ? details.demoDescription
+                : `Backend-calculated ${indicator.category.toLowerCase()} score for ${area.name}. Missing source measurements may use illustrative estimates; the score is not an official municipal statistic.`}
+            </p>
         </Card>
       </section>
 
@@ -90,7 +100,7 @@ function IndicatorDetailPage() {
           ) : (
             <EmptyState
               title="No component breakdown supplied"
-              description="No component definitions or values are configured for this demo indicator."
+              description="The backend does not currently provide a component-level breakdown for this indicator."
             />
           )}
         </Card>
@@ -102,23 +112,33 @@ function IndicatorDetailPage() {
           <dl className="divide-y divide-line">
             <div className="grid gap-1 px-5 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
               <dt className="text-sm font-medium text-muted">Raw metric</dt>
-              <dd className="text-sm font-semibold tabular-nums text-ink">{details.demoRawValue}</dd>
+              <dd className="text-sm font-semibold tabular-nums text-ink">
+                {score.rawMetric ?? details.demoRawValue ?? 'Unavailable'}
+              </dd>
             </div>
             <div className="grid gap-1 px-5 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
               <dt className="text-sm font-medium text-muted">Unit</dt>
-              <dd className="text-sm text-ink">{details.demoUnit}</dd>
+              <dd className="text-sm text-ink">{score.unit || details.demoUnit}</dd>
             </div>
             <div className="grid gap-1 px-5 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
               <dt className="text-sm font-medium text-muted">Reference / benchmark</dt>
-              <dd className="text-sm text-ink">{details.demoReference}</dd>
+              <dd className="text-sm text-ink">
+                {score.benchmarkMin != null && score.benchmarkMax != null
+                  ? `${score.benchmarkMin}–${score.benchmarkMax}`
+                  : details.demoReference}
+              </dd>
             </div>
             <div className="grid gap-1 px-5 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
               <dt className="text-sm font-medium text-muted">Data source</dt>
-              <dd className="text-sm text-ink">{details.demoDataSource}</dd>
+              <dd className="text-sm text-ink">
+                {allowDemoFallback ? details.demoDataSource : 'UIS backend; some source measurements are illustrative estimates.'}
+              </dd>
             </div>
             <div className="grid gap-1 px-5 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
               <dt className="text-sm font-medium text-muted">Last updated</dt>
-              <dd className="text-sm text-ink">{details.demoLastUpdated}</dd>
+              <dd className="text-sm text-ink">
+                {score.calculatedAt ? new Date(score.calculatedAt).toLocaleString() : details.demoLastUpdated}
+              </dd>
             </div>
           </dl>
         </Card>

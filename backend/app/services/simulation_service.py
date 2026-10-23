@@ -14,9 +14,13 @@ from app.core.exceptions import EntityNotFoundException, CalculationException
 
 # Indicative unit costs (in local currency, e.g. INR)
 UNIT_COSTS = {
-    "add_hospital": 25000000.0,   # 2.5 Crore INR per urban primary health center
-    "add_school": 10000000.0,     # 1 Crore INR per primary/middle school
-    "improve_roads": 5000000.0,   # 50 Lakhs INR per km² of road network enhancement
+    "add_hospital": 25000000.0,          # 2.5 Crore INR per urban primary health center
+    "add_school": 10000000.0,            # 1 Crore INR per primary/middle school
+    "improve_roads": 5000000.0,          # 50 Lakhs INR per km² of road network enhancement
+    "enhance_safety": 15000000.0,        # 1.5 Crore INR per smart policing & lighting package
+    "add_park": 8000000.0,               # 80 Lakhs INR per municipal park / bio-retention zone
+    "upgrade_accessibility": 6000000.0,  # 60 Lakhs INR per barrier-free pedestrian corridor
+    "transit_expansion": 18000000.0,     # 1.8 Crore INR per electric feeder line & transit stops
 }
 
 

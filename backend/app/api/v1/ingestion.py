@@ -16,7 +16,7 @@ router = APIRouter(prefix="/ingestion", tags=["Data Ingestion"])
 
 @router.post("/trigger", status_code=status.HTTP_200_OK)
 async def trigger_ingestion(
-    city: str = Query("Bengaluru", description="Target city for OSM amenity ingestion"),
+    city: str = Query("Nashik", description="Target city for OSM amenity ingestion"),
     use_cache: bool = Query(True, description="Whether to read cached OSM responses"),
     db: Session = Depends(get_db),
     _user = Depends(get_current_government_user),  # Protected: Government role required

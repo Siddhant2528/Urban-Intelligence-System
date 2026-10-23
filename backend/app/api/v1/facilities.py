@@ -10,6 +10,7 @@ from geoalchemy2.elements import WKTElement
 from pydantic import BaseModel
 
 from app.api.deps import get_db, get_current_government_user
+from app.repositories import area_repo
 from app.models.facility import Facility
 from app.models.area import Area
 from app.gis.spatial_utils import to_shapely_geometry
@@ -29,17 +30,22 @@ class FacilityCreate(BaseModel):
 
 @router.get("/")
 def list_facilities(
-    area_id: Optional[int] = Query(None, description="Filter by area ID"),
+    area_id: Optional[str] = Query(None, description="Filter by area ID or name slug"),
     facility_type: Optional[str] = Query(None, description="Filter by type (hospital, school, police, transit_stop)"),
     limit: int = Query(200, ge=1, le=1000, description="Max records to return"),
     db: Session = Depends(get_db),
 ):
     """
     List facilities across the city with coordinates formatted as {lat, lng} for Mapbox/Leaflet pins.
+    Supports filtering by area ID or name slug.
     """
     query = db.query(Facility)
     if area_id:
-        query = query.filter(Facility.area_id == area_id)
+        resolved = area_repo.resolve_area(db, area_id)
+        if resolved:
+            query = query.filter(Facility.area_id == resolved.id)
+        else:
+            return {"total": 0, "facilities": []}
     if facility_type:
         query = query.filter(Facility.facility_type == facility_type.lower())
 
@@ -63,6 +69,7 @@ def list_facilities(
         })
 
     return {
+        "total": len(results),
         "total_returned": len(results),
         "facilities": results,
     }

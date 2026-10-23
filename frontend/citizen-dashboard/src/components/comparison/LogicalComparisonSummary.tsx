@@ -30,6 +30,7 @@ interface LogicalComparisonSummaryProps {
   areaAName: string
   areaBId: string
   areaBName: string
+  isBackendData?: boolean
 }
 
 function resolveInsightIcon(title: string): LucideIcon {
@@ -68,12 +69,18 @@ export function LogicalComparisonSummary({
   areaAName,
   areaBId,
   areaBName,
+  isBackendData = false,
 }: LogicalComparisonSummaryProps) {
   const profileA = getAreaCivicProfile(areaAId, areaAName)
   const profileB = getAreaCivicProfile(areaBId, areaBName)
 
   return (
     <div className="space-y-8">
+      {isBackendData && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          The ward strengths and constraints below are illustrative planning context, not verified facts derived from these live indicator records.
+        </p>
+      )}
       {/* ── 1. CIVIC ADVANTAGES SECTION (#4F7D32 Green) ───────────────────────── */}
       <div>
         <div className="flex items-center gap-2.5 mb-4">
@@ -87,7 +94,7 @@ export function LogicalComparisonSummary({
             <h3 className="text-sm sm:text-base font-bold text-slate-900">
               Civic Strengths & Key Advantages
             </h3>
-            <p className="text-xs text-slate-500">Documented urban assets, zoning advantages, and strong services</p>
+            <p className="text-xs text-slate-500">{isBackendData ? 'Illustrative context; verify against municipal records' : 'Demonstration context'}</p>
           </div>
         </div>
 

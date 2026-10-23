@@ -24,12 +24,14 @@ AMENITY_MAPPING = {
     "college": "school",
     "police": "police",
     "bus_station": "transit_stop",
+    "station": "railway_station",
+    "railway_station": "railway_station",
 }
 
 
 async def ingest_osm_facilities_for_city(
     db: Session,
-    city_name: str = "Bengaluru",
+    city_name: str = "Nashik",
     use_cache: bool = True
 ) -> dict:
     """

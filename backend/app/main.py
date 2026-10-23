@@ -15,14 +15,26 @@ app = FastAPI(
 # Exception handlers
 app.add_exception_handler(UISBaseException, uis_exception_handler)
 
-# CORS — allow frontend to call the API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS — configurable via CORS_ORIGINS setting
+raw_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+is_wildcard = "*" in raw_origins or not raw_origins
+
+if is_wildcard:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^https?://.*$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=raw_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Register routers
 app.include_router(auth.router, prefix="/api/v1")

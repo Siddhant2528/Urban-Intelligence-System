@@ -77,6 +77,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 h1 { margin: 0; color: #1e2b42; font-size: 25px; font-weight: 750; letter-spacing: -.045em; }
 .page-heading p { margin: 5px 0 0; color: #8a94a5; font-size: 11px; }
 .heading-controls { display: flex; align-items: center; gap: 8px; }
+.live-calculate-button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 11px; border: 1px solid #3755d7; border-radius: 7px; color: #fff; background: #3755d7; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.live-calculate-button:hover:not(:disabled) { background: #2a43b5; }
+.live-calculate-button:disabled { cursor: wait; opacity: .65; }
+.live-calculate-button .is-spinning { animation: live-calculate-spin 1s linear infinite; }
+.live-calculate-message { margin: 8px 0 0; color: #52617a; font-size: 9px; line-height: 1.5; }
+@keyframes live-calculate-spin { to { transform: rotate(360deg); } }
 .city-showcase { display: flex; min-width: 164px; min-height: 43px; align-items: center; gap: 9px; padding: 6px 11px; border: 1px solid #e6eaf0; border-radius: 7px; color: #637593; background: #fff; }
 .city-showcase > svg { color: #5571d3; }
 .city-showcase > span { display: grid; gap: 3px; }

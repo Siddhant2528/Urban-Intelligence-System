@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the deployment environment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a strong POSTGRES_PASSWORD in the deployment environment}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the deployment environment}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?Set POSTGRES_USER} -d ${POSTGRES_DB:?Set POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY:?Set a unique SECRET_KEY of at least 32 characters}
+      - CORS_ORIGINS=${CORS_ORIGINS:?Set explicit frontend origins, comma-separated}
+      - INITIAL_GOVERNMENT_USERNAME=${INITIAL_GOVERNMENT_USERNAME:?Set the initial government username}
+      - INITIAL_GOVERNMENT_EMAIL=${INITIAL_GOVERNMENT_EMAIL:?Set the initial government email}
+      - INITIAL_GOVERNMENT_PASSWORD=${INITIAL_GOVERNMENT_PASSWORD:?Set a strong initial government password}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python scripts/seed.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  citizen-dashboard:
+    build:
+      context: ./frontend/citizen-dashboard
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:?Set the public backend URL for production}
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  government-dashboard:
+    build:
+      context: ./frontend/government-dashboard
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:?Set the public backend URL for production}
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_prod_data:

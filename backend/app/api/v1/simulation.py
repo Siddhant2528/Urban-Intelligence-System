@@ -10,6 +10,7 @@ from app.schemas.uis import SimulationRequest, SimulationResponse
 from app.services.simulation_service import run_budget_simulation, UNIT_COSTS
 from app.engines.simulation_engine import INTERVENTION_ASSUMPTIONS
 from app.models.uis import Simulation
+from app.repositories import area_repo
 from app.core.exceptions import EntityNotFoundException
 
 router = APIRouter(prefix="/simulation", tags=["Simulation"])
@@ -44,10 +45,15 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
     """
     Run a what-if intervention simulation.
     Models capital investment, score shifts, budget feasibility, and ROI.
+    Accepts area ID (integer) or area slug/name string.
     """
+    area = area_repo.resolve_area(db, request.area_id)
+    if not area:
+        raise EntityNotFoundException("Area", request.area_id)
+
     result = run_budget_simulation(
         db=db,
-        area_id=request.area_id,
+        area_id=area.id,
         intervention_type=request.intervention_type,
         intervention_value=request.intervention_value,
         budget=request.budget,
@@ -56,18 +62,22 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/history/{area_id}")
-def get_simulation_history(area_id: int, db: Session = Depends(get_db)):
+def get_simulation_history(area_id: str, db: Session = Depends(get_db)):
     """
-    Retrieve past simulations executed for a given ward.
+    Retrieve past simulations executed for a given ward by ID or name slug.
     """
+    area = area_repo.resolve_area(db, area_id)
+    if not area:
+        raise EntityNotFoundException("Area", area_id)
+
     sims = (
         db.query(Simulation)
-        .filter(Simulation.area_id == area_id)
+        .filter(Simulation.area_id == area.id)
         .order_by(Simulation.created_at.desc())
         .all()
     )
     return {
-        "area_id": area_id,
+        "area_id": area.id,
         "total_simulations": len(sims),
         "simulations": [
             {

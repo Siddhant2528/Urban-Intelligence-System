@@ -12,7 +12,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_in: UserRegister, db: Session = Depends(get_db)):
-    """Register a new user (role: 'citizen' or 'government')."""
+    """Register a citizen account. Government accounts are provisioned separately."""
+    if user_in.role == "government":
+        raise UISBaseException(
+            message="Government accounts must be provisioned by an administrator.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code="GOVERNMENT_ACCOUNT_REQUIRES_ADMIN",
+        )
+
     existing_user = db.query(User).filter(
         (User.username == user_in.username) | (User.email == user_in.email)
     ).first()
@@ -23,14 +30,11 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
             error_code="USER_ALREADY_EXISTS"
         )
     
-    # Restrict allowed roles
-    role = user_in.role if user_in.role in ["citizen", "government"] else "citizen"
-    
     new_user = User(
         username=user_in.username,
         email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
-        role=role,
+        role="citizen",
     )
     db.add(new_user)
     db.commit()
@@ -41,7 +45,10 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate credentials and generate JWT access token."""
-    user = db.query(User).filter(User.username == credentials.username).first()
+    user = db.query(User).filter(
+        (User.username == credentials.username)
+        | (User.email == credentials.username)
+    ).first()
     if not user or not verify_password(credentials.password, user.hashed_password):
         raise UnauthorizedException("Incorrect username or password.")
     

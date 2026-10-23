@@ -8,6 +8,7 @@ import {
   User,
 } from 'lucide-react'
 import { useState } from 'react'
+import { authApi, ApiError } from '../api/govApi'
 
 type LoginPageProps = {
   onLoginSuccess: (officerEmail: string) => void
@@ -20,43 +21,48 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = (u?: string, p?: string) => {
+  const handleLogin = async (u?: string, p?: string) => {
     const user = (u ?? username).trim()
     const pass = (p ?? password).trim()
 
     setError('')
 
     if (!user) {
-      setError('Please enter your email or username (e.g. admin).')
+      setError('Please enter your username.')
       return
     }
     if (!pass) {
-      setError('Please enter your password (e.g. admin).')
+      setError('Please enter your password.')
       return
     }
 
     setLoading(true)
+    try {
+      const res = await authApi.login(user, pass)
 
-    setTimeout(() => {
-      // Easy credentials: supports 'admin' / 'admin', 'admin' / '1234', or any credentials >= 2 characters
-      if (
-        (user.toLowerCase() === 'admin' && (pass.toLowerCase() === 'admin' || pass === '1234' || pass.length >= 2)) ||
-        (user.length >= 2 && pass.length >= 2)
-      ) {
-        onLoginSuccess(user.includes('@') ? user : `${user}@nashik.gov.in`)
-      } else {
+      if (res.role !== 'government' && res.role !== 'admin') {
+        setError('Access restricted to government users. Please use a government account.')
         setLoading(false)
-        setError('Please enter valid credentials (e.g. admin / admin).')
+        return
       }
-    }, 300)
+
+      // Store JWT token — all subsequent API calls will use it
+      sessionStorage.setItem('uis_token', res.access_token)
+      sessionStorage.setItem('uis_gov_auth', 'true')
+      sessionStorage.setItem('uis_username', res.username)
+      onLoginSuccess(res.username)
+    } catch (err) {
+      setLoading(false)
+      if (err instanceof ApiError && err.status === 401) {
+        setError('Incorrect username or password.')
+      } else {
+        setError('Unable to connect to the server. Please try again.')
+      }
+    }
   }
 
-  const handleQuickAccess = () => {
-    setLoading(true)
-    setTimeout(() => {
-      onLoginSuccess('admin@nashik.gov.in')
-    }, 250)
-  }
+  const handleQuickAccess = () => handleLogin('gov_officer', 'GovernmentPassword123!')
+
 
   return (
     <div className="uis-canvas-root">
@@ -225,7 +231,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Email or username (e.g. admin)"
+                  placeholder="Email or username"
                   autoComplete="username"
                   className="uis-text-field"
                   required
@@ -240,7 +246,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password (e.g. admin)"
+                  placeholder="Password"
                   autoComplete="current-password"
                   className="uis-text-field"
                   required
@@ -264,24 +270,26 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                 {loading ? 'Authenticating…' : 'Login'}
               </button>
 
-              {/* Quick Access Option */}
-              <div className="uis-quick-access-wrap">
-                <button
-                  type="button"
-                  onClick={handleQuickAccess}
-                  disabled={loading}
-                  className="uis-quick-access-pill"
-                  title="One-click demo login without typing"
-                >
-                  <ShieldCheck size={14} className="text-teal-600" />
-                  <span>Quick Access (One-Click Login)</span>
-                </button>
-              </div>
+              {import.meta.env.DEV && (
+                <>
+                  <div className="uis-quick-access-wrap">
+                    <button
+                      type="button"
+                      onClick={handleQuickAccess}
+                      disabled={loading}
+                      className="uis-quick-access-pill"
+                      title="One-click local demo login"
+                    >
+                      <ShieldCheck size={14} className="text-teal-600" />
+                      <span>Quick Access (One-Click Login)</span>
+                    </button>
+                  </div>
 
-              {/* Credentials Helper Note */}
-              <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
-                Easy credentials: <strong style={{ color: '#0f766e' }}>admin</strong> / <strong style={{ color: '#0f766e' }}>admin</strong>
-              </div>
+                  <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
+                    Local demo: <strong style={{ color: '#0f766e' }}>gov_officer</strong> / <strong style={{ color: '#0f766e' }}>GovernmentPassword123!</strong>
+                  </div>
+                </>
+              )}
             </form>
           </div>
         </div>

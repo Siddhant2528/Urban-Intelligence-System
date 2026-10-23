@@ -40,6 +40,38 @@ INTERVENTION_ASSUMPTIONS = {
         "assumptions": ["Each additional school per 10k population adds ~4 points to education score"],
         "limitations": ["Teacher quality and curriculum not modeled"]
     },
+    "enhance_safety": {
+        "affects": ["safety"],
+        "score_improvement_per_unit": 4.5,
+        "assumptions": [
+            "Smart policing, lighting, and police post additions directly boost ward safety rating"
+        ],
+        "limitations": ["Socio-economic crime factors not fully modeled"]
+    },
+    "add_park": {
+        "affects": ["environment"],
+        "score_improvement_per_unit": 5.0,
+        "assumptions": [
+            "Urban green canopy, parks, and bio-retention zones directly reduce urban heat and improve air quality"
+        ],
+        "limitations": ["Maintenance and microclimate variations are estimated"]
+    },
+    "upgrade_accessibility": {
+        "affects": ["accessibility"],
+        "score_improvement_per_unit": 4.0,
+        "assumptions": [
+            "Barrier-free walkways, pedestrian crossings, and transit ramps directly enhance accessibility"
+        ],
+        "limitations": ["Last-mile topography variations are estimated"]
+    },
+    "transit_expansion": {
+        "affects": ["transport", "accessibility"],
+        "score_improvement_per_unit": 3.5,
+        "assumptions": [
+            "Electric feeder buses and dedicated transit stops improve both transit frequency and pedestrian coverage"
+        ],
+        "limitations": ["Route scheduling and congestion delays not modeled"]
+    },
 }
 
 

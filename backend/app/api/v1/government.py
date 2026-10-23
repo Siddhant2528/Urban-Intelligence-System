@@ -28,7 +28,11 @@ def get_citywide_priority_matrix(
     Retrieve all indicator-level development priorities across all city wards.
     Helps planners immediately spot where intervention is most urgent.
     """
-    query = db.query(PriorityScore)
+    query = (
+        db.query(PriorityScore)
+        .join(Area, PriorityScore.area_id == Area.id)
+        .filter(Area.population_source == area_repo.CITY_POPULATION_SOURCE)
+    )
     if severity:
         query = query.filter(PriorityScore.severity == severity.lower())
     
@@ -66,7 +70,7 @@ def get_ward_rankings(
     Get all municipal wards ranked by their latest Area UIS score.
     Includes population and primary constraint profile for each ward.
     """
-    areas = area_repo.get_all_areas(db)
+    areas = area_repo.get_city_areas(db)
     ranked = []
 
     for a in areas:
@@ -114,7 +118,7 @@ def optimize_budget_allocation(
     Normalized Benchmark Gap * Population Impact Weight.
     Ensures funding flows where needs and population footprints are greatest.
     """
-    areas = area_repo.get_all_areas(db)
+    areas = area_repo.get_city_areas(db)
     if not areas:
         return {"total_budget": total_budget, "allocations": []}
 

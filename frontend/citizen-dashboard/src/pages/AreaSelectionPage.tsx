@@ -11,13 +11,14 @@ import {
   SectionHeader,
   Select,
 } from '../components/common'
-import { demoData } from '../data/demoData'
+import { useApiData } from '../context/ApiDataContext'
 
 function AreaSelectionPage() {
+  const { data } = useApiData()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAreaId, setSelectedAreaId] = useState('')
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase()
-  const visibleAreas = demoData.areas.filter((area) =>
+  const visibleAreas = data.areas.filter((area) =>
     area.name.toLocaleLowerCase().includes(normalizedQuery),
   )
   const selectedArea = visibleAreas.find((area) => area.id === selectedAreaId)
@@ -38,9 +39,11 @@ function AreaSelectionPage() {
             id="area-selection-heading"
             level={1}
             title="Select an area"
-            description="Choose a demo area to open its analysis."
+            description="Choose a ward to open its analysis."
           />
-          <Badge className="w-fit" tone="warning">DEMO AREAS</Badge>
+          <Badge className="w-fit" tone={data.dataStatus === 'live' ? 'success' : 'warning'}>
+            {data.dataStatus === 'live' ? 'BACKEND AREAS' : 'DEMO AREAS'}
+          </Badge>
         </div>
       </div>
 
@@ -101,7 +104,7 @@ function AreaSelectionPage() {
                   <Card className="flex min-h-28 items-center justify-between gap-4" interactive>
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wide text-muted">
-                        Demo area
+                        {data.dataStatus === 'live' ? 'Municipal ward' : 'Demo area'}
                       </p>
                       <h3 className="mt-1 text-lg font-semibold text-ink">{area.name}</h3>
                     </div>
@@ -118,7 +121,7 @@ function AreaSelectionPage() {
             <Card padding="none">
               <EmptyState
                 title="No areas found"
-                description="Try another search to see the available demo areas."
+                description="Try another search to see the available wards."
               />
             </Card>
           )}

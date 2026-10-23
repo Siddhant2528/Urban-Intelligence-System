@@ -81,3 +81,33 @@ def save_development_profile(db: Session, area_id: int, profile_json: dict,
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def save_area_calculation_details(
+    db: Session,
+    area_id: int,
+    profile_id: int,
+    methodology_version: str,
+    rationale: str,
+    weights: list[dict],
+    priorities: list[dict],
+) -> None:
+    """Persist the current effective weights and replace stale priorities."""
+    db.query(PriorityScore).filter(PriorityScore.area_id == area_id).delete(
+        synchronize_session=False
+    )
+
+    for item in weights:
+        db.add(AdaptiveWeight(
+            area_id=area_id,
+            indicator_id=item["indicator_id"],
+            weight=item["weight"],
+            rationale=rationale,
+            methodology_version=methodology_version,
+            profile_id=profile_id,
+        ))
+
+    for item in priorities:
+        db.add(PriorityScore(area_id=area_id, **item))
+
+    db.commit()

@@ -1,23 +1,32 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { ButtonLink, Card, SectionHeader, Select } from '../components/common'
 import { AreaUisSpotlight, PairedIndicatorScores, LogicalComparisonSummary } from '../components/comparison'
-import { demoData } from '../data/demoData'
+import { useApiData } from '../context/ApiDataContext'
 
 function CompareAreasPage() {
-  const [areaAId, setAreaAId] = useState(demoData.areas[0]?.id ?? '')
-  const [areaBId, setAreaBId] = useState(demoData.areas[1]?.id ?? '')
-  const areaA = demoData.areas.find((area) => area.id === areaAId)
-  const areaB = demoData.areas.find((area) => area.id === areaBId)
-  const areaAAnalysis = demoData.areaAnalysis.find((item) => item.areaId === areaAId)
-  const areaBAnalysis = demoData.areaAnalysis.find((item) => item.areaId === areaBId)
+  const { data } = useApiData()
+  const [areaAId, setAreaAId] = useState('')
+  const [areaBId, setAreaBId] = useState('')
+
+  useEffect(() => {
+    if (data.areas.length >= 2 && !areaAId && !areaBId) {
+      setAreaAId(data.areas[0].id)
+      setAreaBId(data.areas[1].id)
+    }
+  }, [data.areas, areaAId, areaBId])
+
+  const areaA = data.areas.find((area) => area.id === areaAId)
+  const areaB = data.areas.find((area) => area.id === areaBId)
+  const areaAAnalysis = data.areaAnalysis.find((item) => item.areaId === areaAId)
+  const areaBAnalysis = data.areaAnalysis.find((item) => item.areaId === areaBId)
 
   const getDemoValue = (areaId: string, indicatorId: string) =>
-    demoData.areaIndicators.find(
+    data.areaIndicators.find(
       (item) => item.areaId === areaId && item.indicatorId === indicatorId,
     )?.demoValue ?? null
 
-  const indicatorRows = demoData.indicators.map((indicator) => ({
+  const indicatorRows = data.indicators.map((indicator) => ({
     id: indicator.id,
     label: indicator.category,
     areaAValue: getDemoValue(areaAId, indicator.id),
@@ -48,7 +57,7 @@ function CompareAreasPage() {
             onChange={(event) => setAreaAId(event.target.value)}
             value={areaAId}
           >
-            {demoData.areas.map((area) => (
+            {data.areas.map((area) => (
               <option key={area.id} value={area.id}>{area.name}</option>
             ))}
           </Select>
@@ -57,7 +66,7 @@ function CompareAreasPage() {
             onChange={(event) => setAreaBId(event.target.value)}
             value={areaBId}
           >
-            {demoData.areas.map((area) => (
+            {data.areas.map((area) => (
               <option key={area.id} value={area.id}>{area.name}</option>
             ))}
           </Select>
@@ -72,6 +81,7 @@ function CompareAreasPage() {
           areaBName={areaB?.name ?? 'Area B'}
           areaBUis={areaBAnalysis?.uisDemoValue ?? null}
           scale={areaAAnalysis?.uisScale ?? 100}
+          isBackendData={data.dataStatus === 'live'}
         />
       </section>
 
@@ -107,6 +117,7 @@ function CompareAreasPage() {
             areaAName={areaA?.name ?? 'Area A'}
             areaBId={areaBId}
             areaBName={areaB?.name ?? 'Area B'}
+            isBackendData={data.dataStatus === 'live'}
           />
         </div>
       </section>

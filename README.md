@@ -153,7 +153,9 @@ Interactive OpenAPI documentation will be accessible at:
 
 ---
 
-## 5. Seed Accounts & Roles
+## 5. Local Seed Accounts & Roles
+
+The credentials below are for local development only. Production starts with a government account supplied through the `INITIAL_GOVERNMENT_USERNAME`, `INITIAL_GOVERNMENT_EMAIL`, and `INITIAL_GOVERNMENT_PASSWORD` environment variables. Public registration creates citizen accounts only.
 
 | Role | Username / Email | Password | Allowed Capabilities |
 | :--- | :--- | :--- | :--- |
@@ -165,7 +167,7 @@ Interactive OpenAPI documentation will be accessible at:
 ## 6. Core API Endpoints
 
 ### Authentication
-* `POST /api/v1/auth/register` — Register a citizen or government account
+* `POST /api/v1/auth/register` — Register a citizen account
 * `POST /api/v1/auth/login` — Authenticate and receive signed JWT token
 * `GET /api/v1/auth/me` — Inspect authenticated user profile and role
 
@@ -191,7 +193,7 @@ Interactive OpenAPI documentation will be accessible at:
 
 ### Urban Simulation & Ingestion
 * `POST /api/v1/simulation/` — What-if intervention simulation (e.g. adding clinics) with budget feasibility and ROI
-* `POST /api/v1/ingestion/trigger?city=Bengaluru` — Ingest OSM POIs and link to wards using PostGIS `ST_Contains`
+* `POST /api/v1/ingestion/trigger?city=Nashik` — Ingest OSM POIs and link to wards using PostGIS `ST_Contains`
 * `GET /api/v1/ingestion/status` — Inspect ingested facility counts and data source sync states
 
 ---

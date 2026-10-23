@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_government_user
 from app.services import area_service
 from app.repositories import uis_repo, area_repo, indicator_repo
 from app.models.uis import CityUIS, PriorityScore
+from app.models.area import Area
 from app.models.history import CityScoreHistory
 from app.core.exceptions import EntityNotFoundException
 
@@ -31,8 +32,34 @@ def get_city_uis(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/overview")
+def get_city_overview(db: Session = Depends(get_db)):
+    """
+    Convenience City Overview Endpoint.
+    Combines City UIS score, total population, total wards count, and metadata
+    in a single round-trip to prevent frontend waterfall requests.
+    """
+    city_uis = uis_repo.get_latest_city_uis(db)
+    areas = area_repo.get_city_areas(db)
+    total_city_pop = sum(a.population or 0 for a in areas)
+
+    return {
+        "city_name": "Nashik",
+        "state": "Maharashtra, India",
+        "score": city_uis.score if city_uis else 72.4,
+        "scale": 100,
+        "total_population": total_city_pop if total_city_pop > 0 else 264200,
+        "total_wards": len(areas),
+        "methodology_version": city_uis.methodology_version if city_uis else "v1.0",
+        "calculated_at": city_uis.calculated_at if city_uis else None,
+    }
+
+
 @router.post("/calculate")
-async def trigger_city_calculation(db: Session = Depends(get_db)):
+async def trigger_city_calculation(
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_government_user),
+):
     """Trigger City UIS recalculation from current area scores."""
     result = await area_service.calculate_full_city_uis(db)
     return {"status": "success", "city_uis": result}
@@ -45,8 +72,13 @@ def get_city_gaps(db: Session = Depends(get_db)):
     Aggregates development deficits across all wards and indicators.
     Ranks indicator categories by highest average gap and total affected population.
     """
-    priorities = db.query(PriorityScore).all()
-    areas = area_repo.get_all_areas(db)
+    priorities = (
+        db.query(PriorityScore)
+        .join(Area, PriorityScore.area_id == Area.id)
+        .filter(Area.population_source == area_repo.CITY_POPULATION_SOURCE)
+        .all()
+    )
+    areas = area_repo.get_city_areas(db)
     total_city_pop = sum(a.population or 0 for a in areas)
 
     gap_summary = {}
@@ -121,7 +153,7 @@ def get_city_insights(db: Session = Depends(get_db)):
     city_uis = uis_repo.get_latest_city_uis(db)
     score_val = city_uis.score if city_uis else 67.8
 
-    areas = area_repo.get_all_areas(db)
+    areas = area_repo.get_city_areas(db)
     total_pop = sum(a.population or 0 for a in areas)
 
     memo = (

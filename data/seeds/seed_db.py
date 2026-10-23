@@ -28,6 +28,7 @@ from app.models.user import User
 from app.models.data_source import DataSource
 from app.models.history import AreaScoreHistory, CityScoreHistory
 from app.core.security import get_password_hash
+from app.core.config import settings
 
 
 def load_benchmark_config() -> dict:
@@ -72,20 +73,28 @@ def seed():
 
         # 2. Seed Default Users
         print("\n2. Seeding default user accounts...")
-        users = [
-            {
-                "username": "gov_officer",
-                "email": "officer@city.gov.in",
-                "password": "GovernmentPassword123!",
+        if settings.ENVIRONMENT.lower() == "production":
+            users = [{
+                "username": settings.INITIAL_GOVERNMENT_USERNAME,
+                "email": settings.INITIAL_GOVERNMENT_EMAIL,
+                "password": settings.INITIAL_GOVERNMENT_PASSWORD,
                 "role": "government",
-            },
-            {
-                "username": "citizen_user",
-                "email": "citizen@example.com",
-                "password": "CitizenPassword123!",
-                "role": "citizen",
-            },
-        ]
+            }]
+        else:
+            users = [
+                {
+                    "username": "gov_officer",
+                    "email": "officer@city.gov.in",
+                    "password": "GovernmentPassword123!",
+                    "role": "government",
+                },
+                {
+                    "username": "citizen_user",
+                    "email": "citizen@example.com",
+                    "password": "CitizenPassword123!",
+                    "role": "citizen",
+                },
+            ]
         for u in users:
             existing = db.query(User).filter(User.username == u["username"]).first()
             if not existing:
@@ -311,8 +320,11 @@ def seed():
         db.commit()
         print("\n==============================================")
         print("Database seeding completed successfully!")
-        print("Default Government User:  officer@city.gov.in  (Password: GovernmentPassword123!)")
-        print("Default Citizen User:     citizen@example.com  (Password: CitizenPassword123!)")
+        if settings.ENVIRONMENT.lower() == "production":
+            print("Production government account was initialized from environment configuration.")
+        else:
+            print("Local government login: officer@city.gov.in / GovernmentPassword123!")
+            print("Local citizen login: citizen@example.com / CitizenPassword123!")
         print("==============================================")
 
     except Exception as e:

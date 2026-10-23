@@ -13,7 +13,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Badge, Card, SectionHeader, Select } from '../components/common'
 import CityMapCard from '../components/city/CityMapCard'
 import { AreaUisSpotlight, PairedIndicatorScores, LogicalComparisonSummary } from '../components/comparison'
-import { demoData } from '../data/demoData'
+import { useApiData } from '../context/ApiDataContext'
 import type { IndicatorCategory } from '../types/indicator'
 
 const indicatorIcons: Record<IndicatorCategory, LucideIcon> = {
@@ -28,6 +28,7 @@ const indicatorIcons: Record<IndicatorCategory, LucideIcon> = {
 
 function CityOverviewPage() {
   const location = useLocation()
+  const { data } = useApiData()
   const [areaAId, setAreaAId] = useState('')
   const [areaBId, setAreaBId] = useState('')
 
@@ -49,26 +50,27 @@ function CityOverviewPage() {
     })
   }, [location.hash])
 
-  const areaA = demoData.areas.find((area) => area.id === areaAId)
-  const areaB = demoData.areas.find((area) => area.id === areaBId)
-  const areaAAnalysis = demoData.areaAnalysis.find((item) => item.areaId === areaAId)
-  const areaBAnalysis = demoData.areaAnalysis.find((item) => item.areaId === areaBId)
+  const areaA = data.areas.find((area) => area.id === areaAId)
+  const areaB = data.areas.find((area) => area.id === areaBId)
+  const areaAAnalysis = data.areaAnalysis.find((item) => item.areaId === areaAId)
+  const areaBAnalysis = data.areaAnalysis.find((item) => item.areaId === areaBId)
   const areaAUIS = areaAAnalysis?.uisDemoValue ?? null
   const areaBUIS = areaBAnalysis?.uisDemoValue ?? null
 
   const getDemoValue = (areaId: string, indicatorId: string) =>
-    demoData.areaIndicators.find(
+    data.areaIndicators.find(
       (item) => item.areaId === areaId && item.indicatorId === indicatorId,
     )?.demoValue ?? null
 
   const hasSelectedComparisonAreas = Boolean(areaAId && areaBId && areaAId !== areaBId)
 
-  const indicatorRows = demoData.indicators.map((indicator) => ({
+  const indicatorRows = data.indicators.map((indicator) => ({
     id: indicator.id,
     label: indicator.category,
     areaAValue: getDemoValue(areaAId, indicator.id),
     areaBValue: getDemoValue(areaBId, indicator.id),
   }))
+
 
   return (
     <div className="mx-auto w-full max-w-7xl px-page py-10 sm:py-12">
@@ -76,22 +78,26 @@ function CityOverviewPage() {
         <SectionHeader
           id="city-heading"
           level={1}
-          title={demoData.cityOverview.name}
+          title={data.cityOverview.name}
           description="City Overview"
         />
         <Card
           className="w-full transition-[border-color,box-shadow] duration-150 hover:border-brand/40 hover:shadow-raised sm:w-64"
           padding="compact"
-          title="Demonstration City UIS value out of 100"
+          title={data.dataStatus === 'live'
+            ? 'Backend-calculated UIS; some underlying measurements are illustrative estimates'
+            : 'Demonstration City UIS value out of 100'}
         >
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-muted">City UIS</p>
-            <Badge tone="warning">DEMO DATA</Badge>
+            <Badge tone="warning">
+              {data.dataStatus === 'live' ? 'ESTIMATED INPUTS' : 'DEMO DATA'}
+            </Badge>
           </div>
           <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">
-            {demoData.cityOverview.uisDemoValue.toFixed(1)}
+            {data.cityOverview.uisDemoValue.toFixed(1)}
             <span className="ml-1 text-base font-medium text-muted">
-              / {demoData.cityOverview.uisScale}
+              / {data.cityOverview.uisScale}
             </span>
           </p>
         </Card>
@@ -105,7 +111,7 @@ function CityOverviewPage() {
           description="Explore the city through the seven approved indicator categories."
         />
         <div className="mt-6 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          {demoData.indicators.map(({ category, id }) => {
+          {data.indicators.map(({ category, id }) => {
             const Icon = indicatorIcons[category]
 
             return (
@@ -132,20 +138,20 @@ function CityOverviewPage() {
           id="city-compare-heading"
           level={2}
           title="Compare city areas"
-          description="Select two demo areas and compare their UIS and indicator performance side by side."
+          description="Select two available wards to compare their UIS and indicator performance side by side."
         />
 
         <Card className="mt-6 p-4 sm:p-5">
           <div className="grid gap-4 md:grid-cols-2">
             <Select label="Area A" onChange={(event) => setAreaAId(event.target.value)} value={areaAId}>
               <option value="">Choose an area</option>
-              {demoData.areas.map((area) => (
+              {data.areas.map((area) => (
                 <option key={area.id} value={area.id}>{area.name}</option>
               ))}
             </Select>
             <Select label="Area B" onChange={(event) => setAreaBId(event.target.value)} value={areaBId}>
               <option value="">Choose an area</option>
-              {demoData.areas.map((area) => (
+              {data.areas.map((area) => (
                 <option key={area.id} value={area.id}>{area.name}</option>
               ))}
             </Select>
@@ -154,7 +160,7 @@ function CityOverviewPage() {
 
         {!hasSelectedComparisonAreas ? (
           <div className="mt-6 rounded-card border border-dashed border-line bg-canvas/60 px-4 py-10 text-center text-sm text-muted">
-            Select two different demo areas to view their city comparison analysis.
+            Select two different wards to view their city comparison analysis.
           </div>
         ) : (
           <>
@@ -166,6 +172,7 @@ function CityOverviewPage() {
                 areaBName={areaB?.name ?? 'Area B'}
                 areaBUis={areaBUIS}
                 scale={areaAAnalysis?.uisScale ?? 100}
+              isBackendData={data.dataStatus === 'live'}
               />
             </section>
 
@@ -201,6 +208,7 @@ function CityOverviewPage() {
                   areaAName={areaA?.name ?? 'Area A'}
                   areaBId={areaBId}
                   areaBName={areaB?.name ?? 'Area B'}
+                  isBackendData={data.dataStatus === 'live'}
                 />
               </div>
             </section>

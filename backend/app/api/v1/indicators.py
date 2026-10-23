@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_government_user
 from app.repositories import indicator_repo, area_repo
 from app.services.indicator_service import calculate_and_save_area_indicators
 from app.models.indicator import IndicatorDefinition, IndicatorScore
@@ -92,13 +92,13 @@ def get_indicator_detail(indicator_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/areas/{area_id}")
-def get_area_indicator_scores(area_id: int, db: Session = Depends(get_db)):
-    """Retrieve the latest calculated indicator scores for an area."""
-    area = area_repo.get_area_by_id(db, area_id)
+def get_area_indicator_scores(area_id: str, db: Session = Depends(get_db)):
+    """Retrieve the latest calculated indicator scores for an area by ID or name slug."""
+    area = area_repo.resolve_area(db, area_id)
     if not area:
         raise EntityNotFoundException("Area", area_id)
 
-    scores = indicator_repo.get_indicator_scores_for_area(db, area_id)
+    scores = indicator_repo.get_indicator_scores_for_area(db, area.id)
     return {
         "area_id": area.id,
         "area_name": area.name,
@@ -122,13 +122,22 @@ def get_area_indicator_scores(area_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/areas/{area_id}/compute")
-def compute_area_indicators(area_id: int, db: Session = Depends(get_db)):
+def compute_area_indicators(
+    area_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_government_user),
+):
     """
     Compute and standardize all indicators for an area from database facilities and demographics.
+    Accepts area ID or name slug.
     """
-    results = calculate_and_save_area_indicators(db, area_id)
+    area = area_repo.resolve_area(db, area_id)
+    if not area:
+        raise EntityNotFoundException("Area", area_id)
+
+    results = calculate_and_save_area_indicators(db, area.id)
     return {
         "status": "success",
-        "area_id": area_id,
+        "area_id": area.id,
         "computed_indicators": results,
     }

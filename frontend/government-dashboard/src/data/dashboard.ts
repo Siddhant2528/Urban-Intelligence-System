@@ -979,7 +979,7 @@ export const dashboardMetrics = [
     label: 'City UIS',
     value: '72.4',
     suffix: '/ 100',
-    note: 'Citizen dashboard demo value',
+    note: 'Backend UIS score; underlying measurements include estimates',
     tone: 'green',
     icon: 'score',
   },
@@ -987,7 +987,7 @@ export const dashboardMetrics = [
     label: 'Priority Areas',
     value: '2',
     suffix: '',
-    note: 'Satpur (67.5) & Deolali (69.4)',
+    note: 'Illustrative priority summary when API data is unavailable',
     tone: 'blue',
     icon: 'areas',
   },
@@ -995,7 +995,7 @@ export const dashboardMetrics = [
     label: 'Active Projects',
     value: '3',
     suffix: '',
-    note: 'Targeted civic works in progress',
+    note: 'Illustrative project records; no live project registry is connected',
     tone: 'orange',
     icon: 'projects',
   },
@@ -1019,7 +1019,7 @@ export const dashboardMetrics = [
     label: 'Population Covered',
     value: '2.64',
     suffix: ' L',
-    note: 'Representative 6-zone population',
+    note: 'Backend ward population total when available',
     tone: 'amber',
     icon: 'coverage',
   },
@@ -1341,7 +1341,7 @@ export function getImprovementsForArea(areaId?: string): ImprovementOption[] {
   if (list && list.length > 0) {
     return list
   }
-  return []
+  return baseImprovementCatalog
 }
 
 
@@ -1356,6 +1356,7 @@ export interface SimulationResult {
   currentCityUIS: number
   projectedCityUIS: number
   deltaCityUIS: number
+  cityForecastAvailable?: boolean
   currentSectorScore: number
   projectedSectorScore: number
   deltaSectorScore: number

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigation, RotateCcw } from 'lucide-react'
 import { Badge, ButtonLink, Card } from '../common'
 import { loadGoogleMaps } from '../../utils/googleMapsLoader'
+import { areasApi } from '../../api/areas'
+import { useApiData } from '../../context/ApiDataContext'
 
 // ── Accurate GPS coordinates & matching UIS scores from Area Analysis ──────
 export interface NashikAreaInfo {
@@ -164,6 +166,7 @@ function addGoogleHeatmapOverlay(
   map: google.maps.Map,
   selectedIdRef: { current: string | null },
   mapTypeRef: { current: 'roadmap' | 'hybrid' },
+  areas: NashikAreaInfo[],
 ) {
   const overlay = new google.maps.OverlayView()
   let canvas: HTMLCanvasElement | null = null
@@ -209,7 +212,7 @@ function addGoogleHeatmapOverlay(
     const RADIUS = Math.max(36, Math.min(260, Math.round(80 * zf)))
 
     // Render Heatmap Blurs
-    NASHIK_AREAS.forEach((area) => {
+    areas.forEach((area) => {
       const { lat, lng, uis, id } = area
       const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(lat, lng))
       if (!pt) return
@@ -361,6 +364,7 @@ function initLeaflet(
   onSelect: (area: NashikAreaInfo) => void,
   onHover: (area: NashikAreaInfo) => void,
   onHoverLeave: () => void,
+  areas: NashikAreaInfo[],
 ) {
   return import('leaflet').then((L) => {
     if ((container as unknown as { _leaflet_id?: number })._leaflet_id) {
@@ -389,7 +393,7 @@ function initLeaflet(
     }).addTo(map)
 
     // Interactive clickable & hoverable markers
-    NASHIK_AREAS.forEach((area) => {
+    areas.forEach((area) => {
       const color = getIntensityColor(area.uis)
       const marker = L.marker([area.lat, area.lng], {
         icon: L.divIcon({
@@ -420,7 +424,7 @@ function initLeaflet(
       ctx.clearRect(0, 0, w, h)
       const zf = Math.pow(2, map.getZoom() - MAP_ZOOM)
       const RADIUS = Math.max(36, Math.min(260, Math.round(Math.min(w, h) * 0.16 * zf)))
-      NASHIK_AREAS.forEach(({ lat, lng, uis }) => {
+      areas.forEach(({ lat, lng, uis }) => {
         const { x: px, y: py } = map.latLngToContainerPoint([lat, lng])
         const [r, g, b] = intensityToRgb(normalise(uis))
         const g2 = ctx.createRadialGradient(px, py, 0, px, py, RADIUS)
@@ -444,6 +448,7 @@ function initLeaflet(
 
 // ── Main Component ───────────────────────────────────────────────────────────
 function CityMapCard() {
+  const { data } = useApiData()
   const wrapperRef = useRef<HTMLDivElement>(null)
   const mapDivRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -456,6 +461,28 @@ function CityMapCard() {
   const [mapType, setMapType] = useState<'roadmap' | 'hybrid'>('roadmap')
   const [selectedArea, setSelectedArea] = useState<NashikAreaInfo | null>(null)
   const [isOffCenter, setIsOffCenter] = useState<boolean>(false)
+  const [liveFacilityCount, setLiveFacilityCount] = useState<number | null>(null)
+
+  const mapAreas = useMemo(() => {
+    if (data.dataStatus !== 'live') return NASHIK_AREAS
+
+    return NASHIK_AREAS.flatMap((mapArea) => {
+      const liveArea = data.areas.find((area) => area.id === mapArea.id)
+      const liveScore = data.areaAnalysis.find((item) => item.areaId === mapArea.id)?.uisDemoValue
+      if (!liveArea || !liveScore || liveScore <= 0) return []
+      return [{ ...mapArea, id: liveArea.id, name: liveArea.name, uis: Math.round(liveScore * 100) / 100 }]
+    })
+  }, [data.dataStatus, data.areas, data.areaAnalysis])
+
+  useEffect(() => {
+    areasApi
+      .listFacilities()
+      .then((res) => {
+        const count = res.total ?? res.total_returned ?? res.facilities?.length ?? null
+        setLiveFacilityCount(count)
+      })
+      .catch(() => {})
+  }, [])
 
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedArea?.id ?? null
@@ -585,11 +612,11 @@ function CityMapCard() {
         })
 
         // Add enhanced canvas heatmap overlay
-        const overlay = addGoogleHeatmapOverlay(map, selectedIdRef, mapTypeRef)
+        const overlay = addGoogleHeatmapOverlay(map, selectedIdRef, mapTypeRef, mapAreas)
         heatmapOverlayRef.current = overlay
 
         // Add clickable & hoverable area labels with UIS score
-        NASHIK_AREAS.forEach((area) => {
+        mapAreas.forEach((area) => {
           addGoogleClickableLabel(
             map,
             area,
@@ -615,6 +642,7 @@ function CityMapCard() {
           (area) => handleSelectArea(area),
           (area) => handleHoverArea(area),
           () => handleHoverLeave(),
+          mapAreas,
         ).then((map) => {
           if (!isMounted) {
             map.remove()
@@ -632,7 +660,7 @@ function CityMapCard() {
       isMounted = false
       destroyRef.current?.()
     }
-  }, [mapType])
+  }, [mapType, mapAreas])
 
   return (
     <Card className="overflow-hidden border border-slate-200 shadow-card" padding="none">
@@ -645,7 +673,7 @@ function CityMapCard() {
               Nashik Urban Intensity & Accessibility Heatmap
             </h3>
             <p className="mt-0.5 text-xs text-ink-muted">
-              Hover over or click any area pin to preview real-time UIS score and urban intensity.
+              Ward scores come from the backend when available; map points are approximate reference locations.
             </p>
           </div>
 
@@ -687,11 +715,11 @@ function CityMapCard() {
 
             {provider === 'google' && (
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                ● Google Maps · Live Heatmap
+                ● Google Maps · {liveFacilityCount != null ? `${liveFacilityCount} saved facility records` : 'UIS Heatmap'}
               </Badge>
             )}
             {provider === 'leaflet' && (
-              <Badge>UIS Heatmap · Live</Badge>
+              <Badge>UIS Heatmap · {liveFacilityCount != null ? `${liveFacilityCount} facility records` : 'Map layer'}</Badge>
             )}
             {provider === 'loading' && <Badge>Loading Map…</Badge>}
           </div>
@@ -716,7 +744,7 @@ function CityMapCard() {
             <span>All Nashik (Reset View)</span>
           </button>
 
-          {NASHIK_AREAS.map((area) => {
+          {mapAreas.map((area) => {
             const isSelected = selectedArea?.id === area.id
             const color = getIntensityColor(area.uis)
             return (

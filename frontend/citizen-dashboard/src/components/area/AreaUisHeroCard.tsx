@@ -5,12 +5,14 @@ interface AreaUisHeroCardProps {
   areaName: string
   uisScore: number
   scale?: number
+  isBackendData?: boolean
 }
 
 export function AreaUisHeroCard({
   areaName,
   uisScore,
   scale = 100,
+  isBackendData = false,
 }: AreaUisHeroCardProps) {
   // SVG Radial Gauge Calculation (r=48, circumference ~ 301.59)
   const radius = 48
@@ -35,7 +37,7 @@ export function AreaUisHeroCard({
           </h3>
         </div>
         <div className="flex items-center gap-2">
-          <Badge tone="warning">DEMO DATA</Badge>
+          <Badge tone="warning">{isBackendData ? 'ESTIMATED INPUTS' : 'DEMO DATA'}</Badge>
         </div>
       </div>
 
@@ -82,7 +84,9 @@ export function AreaUisHeroCard({
         {/* Detailed Insights & Benchmarks */}
         <div className="space-y-3.5">
           <p className="text-xs sm:text-sm leading-relaxed text-muted">
-            The composite Urban Intensity Score represents the overall civic performance benchmark evaluated across environmental, healthcare, educational, infrastructure, transport, safety, and accessibility dimensions.
+            The composite Urban Intensity Score summarizes the available civic indicators. {isBackendData
+              ? 'Some missing measurements currently use illustrative estimates and are not verified official statistics.'
+              : 'These demonstration values are illustrative and are not verified official statistics.'}
           </p>
 
           {/* Progress bar visual */}

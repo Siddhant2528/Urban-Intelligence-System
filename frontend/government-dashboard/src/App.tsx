@@ -43,7 +43,6 @@ import {
   demoProjects,
   getImprovementsForArea,
   improvementCatalog,
-  simulateCivicImprovement,
   type AreaData,
   type BudgetItem,
   type CityGapMetric,
@@ -51,6 +50,15 @@ import {
   type ImprovementOption,
   type SimulationResult,
 } from './data/dashboard'
+import {
+  authApi,
+  areasApi,
+  cityApi,
+  governmentApi,
+  simulationApi,
+  type WardRanking,
+  type BudgetAllocationItem,
+} from './api/govApi'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend)
 
@@ -75,17 +83,95 @@ const getCitizenBand = (score: number): { label: 'Weak' | 'Moderate' | 'Strong';
 export function App() {
   // ── AUTHENTICATION STATE ───────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('uis_gov_auth') === 'true'
+    return sessionStorage.getItem('uis_gov_auth') === 'true' && Boolean(sessionStorage.getItem('uis_token'))
   })
 
+  // Listen to 401 auth expiration from API client
+  useEffect(() => {
+    const onAuthExpired = () => {
+      setIsAuthenticated(false)
+    }
+    window.addEventListener('uis_auth_expired', onAuthExpired)
+    return () => window.removeEventListener('uis_auth_expired', onAuthExpired)
+  }, [])
+
   const handleLoginSuccess = (_officerEmail: string) => {
-    sessionStorage.setItem('uis_gov_auth', 'true')
     setIsAuthenticated(true)
   }
 
   const handleLogout = () => {
-    sessionStorage.removeItem('uis_gov_auth')
+    authApi.logout()
     setIsAuthenticated(false)
+  }
+
+  // ── LIVE BACKEND STATE (AREAS, CITY UIS, WARD RANKINGS) ────────────────────
+  const [liveAreas, setLiveAreas] = useState<Array<{ id: number; name: string; population: number | null }>>([])
+  const [liveCityUIS, setLiveCityUIS] = useState<number | null>(null)
+  const [liveWardRankings, setLiveWardRankings] = useState<WardRanking[]>([])
+  const [calculationProgress, setCalculationProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [calculationMessage, setCalculationMessage] = useState('')
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    Promise.all([areasApi.list(), cityApi.getUIS(), governmentApi.getWardRankings()])
+      .then(([areaResponse, cityResponse, rankingResponse]) => {
+        const wards = areaResponse.areas
+          .filter((area) => area.population_source === 'Nashik Municipal Corporation')
+          .map(({ id, name, population }) => ({ id, name, population }))
+        const wardIds = new Set(wards.map((area) => area.id))
+        setLiveAreas(wards)
+        setLiveCityUIS(cityResponse.score)
+        setLiveWardRankings(rankingResponse.rankings.filter((ranking) => wardIds.has(ranking.area_id)))
+      })
+      .catch(() => {
+        setLiveAreas([])
+        setLiveWardRankings([])
+      })
+  }, [isAuthenticated])
+
+  const handleCalculateAllAreas = async () => {
+    if (!liveAreas.length || calculationProgress) return
+
+    setCalculationMessage('')
+    setCalculationProgress({ completed: 0, total: liveAreas.length })
+    const failures: string[] = []
+
+    for (const [index, area] of liveAreas.entries()) {
+      setCalculationProgress({ completed: index, total: liveAreas.length })
+      try {
+        await areasApi.calculate(area.id)
+      } catch (error) {
+        failures.push(`${area.name}: ${error instanceof Error ? error.message : 'request failed'}`)
+      }
+    }
+
+    if (failures.length === 0) {
+      try {
+        await cityApi.calculate()
+        const [rankings, city] = await Promise.all([
+          governmentApi.getWardRankings(),
+          cityApi.getUIS(),
+        ])
+        const wardIds = new Set(liveAreas.map((area) => area.id))
+        setLiveWardRankings(rankings.rankings.filter((ranking) => wardIds.has(ranking.area_id)))
+        setLiveCityUIS(city.score)
+        setCalculationMessage(`Updated UIS scores for all ${liveAreas.length} areas.`)
+      } catch (error) {
+        setCalculationMessage(`Area scores were calculated, but the city summary could not be refreshed: ${error instanceof Error ? error.message : 'request failed'}`)
+      }
+    } else {
+      const completed = liveAreas.length - failures.length
+      setCalculationMessage(
+        `Calculated ${completed} of ${liveAreas.length} areas. City UIS was not refreshed. ${failures.slice(0, 2).join('; ')}`,
+      )
+      const rankings = await governmentApi.getWardRankings().catch(() => null)
+      if (rankings) {
+        const wardIds = new Set(liveAreas.map((area) => area.id))
+        setLiveWardRankings(rankings.rankings.filter((ranking) => wardIds.has(ranking.area_id)))
+      }
+    }
+
+    setCalculationProgress(null)
   }
 
   // ── WHAT-IF SIMULATION STATE ───────────────────────────────────────────────
@@ -101,6 +187,20 @@ export function App() {
   // ── BUDGET ALLOCATION & DEPLOYMENT STATE (CITY GAP DERIVED) ───────────────
   const [totalBudgetCr, setTotalBudgetCr] = useState<number>(182)
   const [selectedBudgetKey, setSelectedBudgetKey] = useState<string | null>(null)
+  const [budgetTab, setBudgetTab] = useState<'sectors' | 'wards'>('sectors')
+  const [wardAllocations, setWardAllocations] = useState<BudgetAllocationItem[]>([])
+  const [, setLoadingWardBudget] = useState<boolean>(false)
+
+  // Fetch proportional need-based ward allocation from backend API
+  useEffect(() => {
+    if (!isAuthenticated) return
+    setLoadingWardBudget(true)
+    governmentApi
+      .getBudgetAllocation(totalBudgetCr * 10_000_000)
+      .then((res) => setWardAllocations(res.allocations))
+      .catch(() => { /* fallback gracefully */ })
+      .finally(() => setLoadingWardBudget(false))
+  }, [isAuthenticated, totalBudgetCr])
   const [chartAnimKey, setChartAnimKey] = useState<number>(0)
   const [isChartPulsing, setIsChartPulsing] = useState<boolean>(false)
 
@@ -232,11 +332,6 @@ export function App() {
   const [selectedGapKey, setSelectedGapKey] = useState<string | null>(null)
   const [selectedAreaForGap, setSelectedAreaForGap] = useState<string>('satpur')
 
-  const selectedAreaObj = useMemo(
-    () => (simulationAreaId ? areaUIS.find((area) => area.id === simulationAreaId) ?? null : null),
-    [simulationAreaId]
-  )
-
   const availableImprovements = useMemo(() => {
     return getImprovementsForArea(simulationAreaId)
   }, [simulationAreaId])
@@ -249,11 +344,6 @@ export function App() {
         : null,
     [selectedImprovementLabel, availableImprovements]
   )
-
-  const currentSectorBaseline = useMemo(() => {
-    if (!selectedAreaObj || !selectedImprovementObj) return null
-    return selectedAreaObj.sectors[selectedImprovementObj.sectorKey] ?? 0
-  }, [selectedAreaObj, selectedImprovementObj])
 
   const activeGapMetric = useMemo<CityGapMetric | null>(
     () => (selectedGapKey ? cityGapAnalysis.find((g) => g.key === selectedGapKey) ?? null : null),
@@ -277,15 +367,60 @@ export function App() {
     return cityGapAnalysis
   }, [gapFilter])
 
-  // Prioritized area rankings sorted by lowest UIS first
+  // Prioritized area rankings sorted by lowest UIS first (with live backend data overlay)
   const prioritizedAreas = useMemo(() => {
+    if (liveWardRankings.length > 0) {
+      return liveWardRankings.map((wr, index) => {
+        const staticMatch = areaUIS.find(
+          (a) => a.id === String(wr.area_id) || a.name.toLowerCase() === wr.area_name.toLowerCase()
+        )
+        return {
+          id: String(wr.area_id),
+          name: wr.area_name,
+          zone: 'Nashik Municipal Corporation ward',
+          score: wr.area_uis,
+          populationDemoCount: wr.population ?? staticMatch?.populationDemoCount ?? 30000,
+          strength: staticMatch?.strength ?? 'Accessibility',
+          improve: wr.constraints?.[0] ?? staticMatch?.improve ?? 'Infrastructure',
+          sectors: staticMatch?.sectors ?? {
+            environment: 50,
+            healthcare: 50,
+            education: 50,
+            safety: 50,
+            transport: 50,
+            infrastructure: 50,
+            accessibility: 50,
+          },
+          facilities: staticMatch?.facilities ?? {
+            hospitals: 2,
+            schools: 4,
+            policeStations: 1,
+            busStops: 6,
+            parks: 2,
+          },
+          description: wr.constraints?.join(', ') || staticMatch?.description || '',
+          priority: index < 2 ? ('High' as const) : index < 4 ? ('Medium' as const) : ('Monitor' as const),
+        }
+      })
+    }
+
     return [...areaUIS]
       .sort((a, b) => a.score - b.score)
       .map((area, index) => ({
         ...area,
-        priority: index < 2 ? 'High' : index < 4 ? 'Medium' : 'Monitor',
+        priority: index < 2 ? ('High' as const) : index < 4 ? ('Medium' as const) : ('Monitor' as const),
       }))
-  }, [])
+  }, [liveWardRankings])
+
+  const selectedAreaObj = useMemo(
+    () => (simulationAreaId ? prioritizedAreas.find((area) => area.id === simulationAreaId) ?? null : null),
+    [simulationAreaId, prioritizedAreas]
+  )
+
+  const currentSectorBaseline = useMemo(() => {
+    if (!selectedAreaObj || !selectedImprovementObj) return null
+    return selectedAreaObj.sectors[selectedImprovementObj.sectorKey] ?? 0
+  }, [selectedAreaObj, selectedImprovementObj])
 
   // ── RECENT / PLANNED PROJECTS STATE ─────────────────────────────────────────
   const [projectSectorFilter, setProjectSectorFilter] = useState<string>('all')
@@ -321,6 +456,18 @@ export function App() {
     return { totalCr, avgProg, onTrackCount }
   }, [])
 
+// Map frontend civic labels to backend intervention keys
+function mapImprovementToBackendIntervention(label: string): string {
+  const l = label.toLowerCase()
+  if (l.includes('health') || l.includes('clinic') || l.includes('hospital')) return 'add_hospital'
+  if (l.includes('school') || l.includes('education')) return 'add_school'
+  if (l.includes('safe') || l.includes('police') || l.includes('surveillance')) return 'enhance_safety'
+  if (l.includes('park') || l.includes('green') || l.includes('environment')) return 'add_park'
+  if (l.includes('access') || l.includes('footpath') || l.includes('pedestrian')) return 'upgrade_accessibility'
+  if (l.includes('transit') || l.includes('bus') || l.includes('feeder')) return 'transit_expansion'
+  return 'improve_roads'
+}
+
   // Dynamic simulation trigger with visual feedback and animation
   const triggerDynamicRecalculation = (
     areaId: string,
@@ -329,11 +476,69 @@ export function App() {
   ) => {
     if (areaId && improvement && Number.isFinite(amount) && amount >= 1 && amount <= 100) {
       setSimulationError('')
-      const result = simulateCivicImprovement(areaId, improvement, amount)
-      setSimulationResult(result)
+      setSimulationResult(null)
       setUpdateKey((prev) => prev + 1)
       setIsDynamicAnimating(true)
       window.setTimeout(() => setIsDynamicAnimating(false), 700)
+
+      const currentArea = prioritizedAreas.find((area) => area.id === areaId)
+      const selectedImprovement = improvementCatalog.find(
+        (item) => item.label === improvement || item.sectorName === improvement
+      ) ?? improvementCatalog[0]
+      const currentCityScore = liveCityUIS ?? cityOverview.uis
+
+      simulationApi
+        .run({
+          area_id: Number.isInteger(Number(areaId)) ? Number(areaId) : (areaId as any),
+          intervention_type: mapImprovementToBackendIntervention(improvement),
+          intervention_value: Math.max(1, Math.round(amount / 2)),
+          budget: amount * 10_000_000,
+        })
+        .then((serverRes) => {
+          const affected = serverRes.affected_indicators
+          const primary = affected[0]
+          const roi = serverRes.cost_efficiency_roi ?? 0
+          const efficiencyIndex: SimulationResult['efficiencyIndex'] = roi > 1.2
+            ? 'Exceptional ROI'
+            : roi > 0.8
+            ? 'High Impact'
+            : roi > 0
+            ? 'Moderate Yield'
+            : 'Diminishing Returns'
+          setSimulationResult({
+            areaId: String(serverRes.area_id),
+            areaName: serverRes.area_name ?? currentArea?.name ?? 'Selected ward',
+            investmentCr: amount,
+            improvement: selectedImprovement,
+            currentAreaUIS: serverRes.before_uis,
+            projectedAreaUIS: serverRes.after_uis,
+            deltaAreaUIS: serverRes.uis_change,
+            currentCityUIS: currentCityScore,
+            projectedCityUIS: currentCityScore,
+            deltaCityUIS: 0,
+            cityForecastAvailable: false,
+            currentSectorScore: primary?.before ?? currentSectorBaseline ?? 0,
+            projectedSectorScore: primary?.after ?? currentSectorBaseline ?? 0,
+            deltaSectorScore: primary?.change ?? 0,
+            benefitedPopulation: currentArea?.populationDemoCount ?? 0,
+            benefitedPopulationPct: currentArea?.populationDemoCount ? 100 : 0,
+            efficiencyIndex,
+            efficiencyTone: efficiencyIndex === 'Exceptional ROI' ? 'green' : efficiencyIndex === 'High Impact' ? 'blue' : 'amber',
+            rationale: [serverRes.model_note, ...serverRes.assumptions, ...serverRes.limitations].filter(Boolean).join(' '),
+            breakdown: affected.map((item) => ({
+              sector: item.indicator,
+              before: item.before,
+              after: item.after,
+              gain: item.change,
+            })),
+          })
+          setSimulationError('Backend area simulation completed. The endpoint does not return a city-wide forecast; city impact is not projected.')
+        })
+        .catch((error) => {
+          setSimulationResult(null)
+          setSimulationError(`Backend simulation failed: ${error instanceof Error ? error.message : 'request failed'}`)
+        })
+
       return true
     }
     return false
@@ -418,7 +623,7 @@ export function App() {
         ['Generated', new Date().toLocaleString()],
         ['City', cityOverview.name],
         ['State', cityOverview.state],
-        ['Current City UIS', `${cityOverview.uis} / 100`],
+        ['Current City UIS', `${liveCityUIS ?? cityOverview.uis} / 100`],
         ['Total Representative Population', String(cityOverview.totalPopulation)],
         [],
         ['--- SECTOR PERFORMANCE BREAKDOWN ---'],
@@ -483,7 +688,7 @@ export function App() {
         ['UIS Nashik Government Dashboard - Executive City Intelligence Report'],
         ['Source', 'Citizen dashboard city & area UIS indicators with predictive simulation'],
         ['City', cityOverview.name],
-        ['Current City UIS', `${cityOverview.uis} / 100`],
+        ['Current City UIS', `${liveCityUIS ?? cityOverview.uis} / 100`],
         [
           'Simulated Projected City UIS',
           simulationResult
@@ -565,12 +770,40 @@ export function App() {
           onValueChange: (val: number) => setTotalBudgetCr(val),
         }
       }
-      if (metric.label === 'Projected City UIS') {
+      if (metric.label === 'City UIS') {
+        const scoreVal = liveCityUIS != null ? String(liveCityUIS) : metric.value
         return {
           ...metric,
-          value: simulationResult ? String(simulationResult.projectedCityUIS) : '—',
-          suffix: simulationResult ? '/ 100' : '',
-          note: simulationResult
+          value: scoreVal,
+          note: liveCityUIS != null
+            ? 'Backend UIS score; underlying measurements include estimates'
+            : metric.note,
+        }
+      }
+      if (metric.label === 'Priority Areas' && liveWardRankings.length > 0) {
+        return {
+          ...metric,
+          value: String(liveWardRankings.length > 1 ? 2 : liveWardRankings.length),
+          note: `${liveWardRankings.length > 1 ? 2 : liveWardRankings.length} lowest-scoring wards in backend rankings`,
+        }
+      }
+      if (metric.label === 'Population Covered' && liveAreas.length > 0) {
+        const population = liveAreas.reduce((sum, area) => sum + (area.population ?? 0), 0)
+        return {
+          ...metric,
+          value: (population / 100_000).toFixed(2),
+          note: 'Sum of backend ward population fields',
+        }
+      }
+      if (metric.label === 'Projected City UIS') {
+        const cityForecastAvailable = simulationResult?.cityForecastAvailable !== false
+        return {
+          ...metric,
+          value: simulationResult && cityForecastAvailable ? String(simulationResult.projectedCityUIS) : '—',
+          suffix: simulationResult && cityForecastAvailable ? '/ 100' : '',
+          note: simulationResult && !cityForecastAvailable
+            ? 'Backend simulation returns area impact only'
+            : simulationResult
             ? `+${simulationResult.deltaCityUIS} gain via ${simulationResult.areaName}`
             : 'Run simulation below to calculate',
           tone: simulationResult ? 'teal' : 'teal',
@@ -578,7 +811,7 @@ export function App() {
       }
       return metric
     })
-  }, [simulationResult, totalBudgetCr])
+  }, [simulationResult, totalBudgetCr, liveCityUIS, liveWardRankings, liveAreas])
 
   if (!isAuthenticated) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -600,6 +833,17 @@ export function App() {
               </p>
             </div>
             <div className="heading-controls">
+              <button
+                className="live-calculate-button"
+                type="button"
+                onClick={handleCalculateAllAreas}
+                disabled={!liveAreas.length || calculationProgress !== null}
+              >
+                <RotateCcw size={13} className={calculationProgress ? 'is-spinning' : undefined} />
+                {calculationProgress
+                  ? `Calculating ${calculationProgress.completed + 1}/${calculationProgress.total}`
+                  : 'Calculate live UIS'}
+              </button>
               <div className="city-showcase" aria-label="Dashboard city: Nashik, Maharashtra, India">
                 <MapPin size={16} />
                 <span>
@@ -609,9 +853,14 @@ export function App() {
               </div>
             </div>
           </div>
+          {calculationMessage && (
+            <p className="live-calculate-message" role="status" aria-live="polite">
+              {calculationMessage}
+            </p>
+          )}
 
 
-          <MapCard />
+          <MapCard liveRankings={liveWardRankings} />
 
           <section className="metric-grid" aria-label="Nashik government dashboard summary">
             {dynamicMetrics.map((metric) => (
@@ -632,9 +881,9 @@ export function App() {
                   <thead>
                     <tr>
                       <th>AREA & ZONE</th>
-                      <th>UIS DEMO</th>
+                      <th>UIS SCORE</th>
                       <th>PRIORITY</th>
-                      <th>POPULATION (DEMO)</th>
+                      <th>POPULATION</th>
                       <th>PRIMARY DEFICIT</th>
                     </tr>
                   </thead>
@@ -992,18 +1241,42 @@ export function App() {
                   <h2>
                     {selectedBudgetItem
                       ? `${selectedBudgetItem.label} Allocation`
+                      : budgetTab === 'wards'
+                      ? 'Ward-Based Proportional Budget Allocation'
                       : 'Budget allocation plan'}
                   </h2>
                   <p>
                     {selectedBudgetItem
                       ? `Targeted zone allocation roadmap for ₹${selectedBudgetItem.crAmount} Cr (${selectedBudgetItem.value}% of Budget)`
+                      : budgetTab === 'wards'
+                      ? 'Live mathematical distribution based on (80 - Area UIS) × Population from backend'
                       : 'Capital investment aligned with civic deficits'}
                   </p>
                 </div>
                 {!selectedBudgetItem && (
-                  <div className="budget-gap-sync-badge" title="Capital shares mathematically aligned with Nashik 6-zone civic deficits">
-                    <span className="gap-sync-dot" />
-                    <span>ALIGNED WITH CITY GAP ANALYSIS</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="gap-view-toggle">
+                      <button
+                        type="button"
+                        className={`gap-view-btn ${budgetTab === 'sectors' ? 'active' : ''}`}
+                        onClick={() => setBudgetTab('sectors')}
+                      >
+                        Sector Shares
+                      </button>
+                      <button
+                        type="button"
+                        className={`gap-view-btn ${budgetTab === 'wards' ? 'active' : ''}`}
+                        onClick={() => setBudgetTab('wards')}
+                      >
+                        Ward Need (Live API)
+                      </button>
+                    </div>
+                    {budgetTab === 'sectors' && (
+                      <div className="budget-gap-sync-badge" title="Capital shares mathematically aligned with Nashik 6-zone civic deficits">
+                        <span className="gap-sync-dot" />
+                        <span>ALIGNED WITH CITY GAP ANALYSIS</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1082,6 +1355,72 @@ export function App() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                </div>
+              ) : budgetTab === 'wards' ? (
+                /* ── LIVE WARD NEED ALLOCATION VIEW (FROM BACKEND API) ── */
+                <div style={{ padding: '8px 4px' }}>
+                  <div style={{ marginBottom: '10px', fontSize: '11px', color: '#64748b' }}>
+                    ⚖️ <strong>Backend Proportional Need Allocation:</strong> Budget distributed mathematically by <code>(80 - Area UIS) × Population</code> from <code>GET /api/v1/government/budget-allocation</code>.
+                  </div>
+                  <div className="priority-table-wrap">
+                    <table className="priority-table">
+                      <thead>
+                        <tr>
+                          <th>WARD / AREA</th>
+                          <th>POPULATION</th>
+                          <th>NEED SHARE</th>
+                          <th>ALLOCATED BUDGET</th>
+                          <th>ACTION</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(wardAllocations.length > 0
+                          ? wardAllocations
+                          : [
+                              { area_id: 1, area_name: 'Satpur', population: 38400, need_share_percentage: 23.4, allocated_budget: totalBudgetCr * 0.234 * 10000000 },
+                              { area_id: 2, area_name: 'Nashik Road', population: 52000, need_share_percentage: 21.2, allocated_budget: totalBudgetCr * 0.212 * 10000000 },
+                              { area_id: 3, area_name: 'Panchavati', population: 44000, need_share_percentage: 17.5, allocated_budget: totalBudgetCr * 0.175 * 10000000 },
+                              { area_id: 4, area_name: 'CIDCO', population: 48000, need_share_percentage: 14.8, allocated_budget: totalBudgetCr * 0.148 * 10000000 },
+                              { area_id: 5, area_name: 'Old Nashik', population: 42000, need_share_percentage: 13.1, allocated_budget: totalBudgetCr * 0.131 * 10000000 },
+                              { area_id: 6, area_name: 'Gangapur Road', population: 39800, need_share_percentage: 10.0, allocated_budget: totalBudgetCr * 0.100 * 10000000 },
+                            ]
+                        ).map((wa) => {
+                          const cr = Math.round((wa.allocated_budget / 10000000) * 10) / 10
+                          return (
+                            <tr key={wa.area_id}>
+                              <td>
+                                <strong>{wa.area_name}</strong>
+                              </td>
+                              <td>{wa.population ? Number(wa.population).toLocaleString('en-IN') : '—'}</td>
+                              <td>
+                                <span style={{ fontWeight: 700, color: '#0f766e' }}>
+                                  {wa.need_share_percentage}%
+                                </span>
+                              </td>
+                              <td>
+                                <strong style={{ color: '#0f766e', fontSize: '12px' }}>
+                                  ₹{cr} Cr
+                                </strong>
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="budget-simulate-btn"
+                                  title={`Simulate ₹${cr} Cr investment in ${wa.area_name}`}
+                                  onClick={() => {
+                                    handleSelectAreaForSimulation(String(wa.area_id))
+                                    setInvestment(String(Math.min(100, Math.max(1, Math.round(cr)))))
+                                  }}
+                                >
+                                  Simulate <ChevronRight size={10} />
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               ) : (
@@ -1171,7 +1510,7 @@ export function App() {
                         }}
                       >
                         <option value="">-- Select a Nashik zone / area --</option>
-                        {[...areaUIS]
+                        {[...prioritizedAreas]
                           .sort((a, b) => a.score - b.score)
                           .map((area) => (
                             <option key={area.id} value={area.id}>
@@ -1266,7 +1605,7 @@ export function App() {
                   <div className="simulation-impact-header">
                     <div>
                       <h3>Projected Impact Preview</h3>
-                      <p>Economic elasticity & population-weighted calculation</p>
+                      <p>Area impact uses the backend simulation; city-wide projection is illustrative.</p>
                     </div>
                     <span>{simulationResult ? 'CALCULATED INTELLIGENCE' : 'AWAITING SIMULATION'}</span>
                   </div>
@@ -1305,22 +1644,26 @@ export function App() {
                     <div className={`impact-card ${isDynamicAnimating ? 'card-dynamic-pulse' : ''}`}>
                       <span>Projected City UIS</span>
                       <strong style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {simulationResult ? (
+                        {simulationResult?.cityForecastAvailable === false ? (
+                          <span>Not returned by API</span>
+                        ) : simulationResult ? (
                           <>
                             {simulationResult.currentCityUIS} → {simulationResult.projectedCityUIS}
                             <span className="delta-pill city">+{simulationResult.deltaCityUIS} pts</span>
                           </>
                         ) : (
                           <>
-                            {cityOverview.uis} → —
+                            {liveCityUIS ?? cityOverview.uis} → —
                             <span className="delta-pill neutral">Not projected</span>
                           </>
                         )}
                       </strong>
                       <small>
-                        {simulationResult
+                        {simulationResult?.cityForecastAvailable === false
+                          ? 'The backend endpoint does not provide a city-wide projection'
+                          : simulationResult
                           ? 'Nashik population-weighted'
-                          : `Nashik baseline (${cityOverview.uis})`}
+                          : `Backend city baseline (${liveCityUIS ?? cityOverview.uis})`}
                       </small>
                     </div>
 
@@ -1380,7 +1723,9 @@ export function App() {
 
                   <div className="simulation-bottom">
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {simulationResult ? (
+                      {simulationResult?.cityForecastAvailable === false ? (
+                        <strong>City-wide forecast not returned by API</strong>
+                      ) : simulationResult ? (
                         <>
                           <Check size={14} color="#16a34a" />
                           Dynamic forecast active · Real-time elastic projection
@@ -1481,7 +1826,7 @@ export function App() {
                         </strong>
                       ) : (
                         <strong style={{ color: '#475569' }}>
-                          {cityOverview.uis} → —
+                          {liveCityUIS ?? cityOverview.uis} → —
                           <small style={{ color: '#94a3b8' }}>Awaiting</small>
                         </strong>
                       )}
@@ -1493,7 +1838,7 @@ export function App() {
                     aria-label={
                       simulationResult
                         ? `Current ${simulationResult.areaName} UIS is ${simulationResult.currentAreaUIS}, projected to ${simulationResult.projectedAreaUIS}. City UIS projected from ${simulationResult.currentCityUIS} to ${simulationResult.projectedCityUIS}.`
-                        : `City UIS baseline is ${cityOverview.uis}. Simulation awaiting execution.`
+                        : `City UIS baseline is ${liveCityUIS ?? cityOverview.uis}. City-wide projection is illustrative.`
                     }
                   >
                     {/* Area Dual Column */}
@@ -1511,7 +1856,13 @@ export function App() {
                         <span>{selectedAreaObj ? 'Current' : 'Area'}</span>
                       </div>
                       <div className="uis-bar-column">
-                        {simulationResult ? (
+                        {simulationResult?.cityForecastAvailable === false ? (
+                          <>
+                            <strong style={{ color: '#94a3b8' }}>—</strong>
+                            <div className="uis-bar predicted uncalculated" />
+                            <span style={{ color: '#94a3b8' }}>City forecast unavailable</span>
+                          </>
+                        ) : simulationResult ? (
                           <>
                             <div key={`area-tag-${updateKey}`} className="uis-bar-floating-tag area-tag">
                               ▲ +{simulationResult.deltaAreaUIS}
@@ -1553,11 +1904,11 @@ export function App() {
                     {/* City Dual Column */}
                     <div className="uis-dual-group">
                       <div className="uis-bar-column">
-                        <strong>{cityOverview.uis}</strong>
+                        <strong>{liveCityUIS ?? cityOverview.uis}</strong>
                         <div
                           className="uis-bar current"
                           style={{
-                            height: `${(cityOverview.uis / 100) * 115}px`,
+                            height: `${((liveCityUIS ?? cityOverview.uis) / 100) * 115}px`,
                             background: 'linear-gradient(180deg, #94a3b8, #64748b)',
                             transition: 'height 0.5s ease',
                           }}
@@ -1608,7 +1959,9 @@ export function App() {
                   <div className="prediction-note">
                     <CircleHelp size={12} />
                     <span>
-                      {simulationResult && selectedAreaObj
+                      {simulationResult?.cityForecastAvailable === false
+                        ? 'The backend returned an area-level simulation only; no city-wide forecast is available.'
+                        : simulationResult && selectedAreaObj
                         ? `Projected City UIS aggregates all 6 zones weighted by representative population share (${simulationResult.areaName}: ${Math.round(
                             (selectedAreaObj.populationDemoCount / cityOverview.totalPopulation) * 100
                           )}% weight).`

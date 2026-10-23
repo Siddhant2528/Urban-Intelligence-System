@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
 from datetime import datetime
 
 class AreaUISResponse(BaseModel):
@@ -38,7 +38,7 @@ class PriorityResponse(BaseModel):
     priority: float
 
 class SimulationRequest(BaseModel):
-    area_id: int
+    area_id: Union[int, str]
     intervention_type: str
     intervention_value: float
     budget: Optional[float] = None
