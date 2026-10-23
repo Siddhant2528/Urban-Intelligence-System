@@ -55,8 +55,9 @@ AREA UIS (Weighted sum of indicator scores)
 
 ```text
 Urban-Intelligence-System/
-├── frontend/                     # Citizen Dashboard & Visualization (React + Vite)
-│   └── citizen-dashboard/
+├── frontend/                     # Frontend Dashboards (React + Vite)
+│   ├── citizen-dashboard/       # Citizen Dashboard & Visualization
+│   └── government-dashboard/    # Government Decision Support Dashboard
 │
 ├── backend/                      # Python FastAPI Core Backend
 │   ├── app/

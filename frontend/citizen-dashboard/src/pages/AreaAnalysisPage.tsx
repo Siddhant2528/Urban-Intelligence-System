@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   ArrowLeft,
   BusFront,
   GraduationCap,
   HeartPulse,
-  MapPin,
   ShieldCheck,
   Target,
   TrainFront,
@@ -12,13 +11,9 @@ import {
   TreePine,
 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
-import cidcoMap from '../assets/images/Maps/CIDCO.png'
-import deolaliMap from '../assets/images/Maps/Deolali.png'
-import dwarkaMap from '../assets/images/Maps/Dwarka.png'
-import gangapurMap from '../assets/images/Maps/Gangapur.png'
-import panchavatiMap from '../assets/images/Maps/Panchavati.png'
-import satpurMap from '../assets/images/Maps/Satpur.png'
-import googleMapsPin from '../assets/images/google-maps.png'
+import { AreaLocationMap } from '../components/area/AreaLocationMap'
+import { AreaFacilitiesMap, CATEGORY_ICONS, CATEGORY_COLORS } from '../components/area/AreaFacilitiesMap'
+import { AreaUisHeroCard } from '../components/area/AreaUisHeroCard'
 import {
   Badge,
   ButtonLink,
@@ -27,7 +22,7 @@ import {
   SectionHeader,
 } from '../components/common'
 import { demoData } from '../data/demoData'
-import { facilityCategories, type Facility, type FacilityCategory } from '../types/facility'
+import { facilityCategories, type FacilityCategory } from '../types/facility'
 import {
   classifyDevelopmentProfile,
   developmentIndicatorIds,
@@ -108,61 +103,15 @@ function AreaAnalysisPage() {
   )
   const areaHighlights = [...scoredIndicators].sort((a, b) => b.value - a.value).slice(0, 2)
   const areasToExplore = [...scoredIndicators].sort((a, b) => a.value - b.value).slice(0, 2)
-  const areaMapImages: Record<string, string> = {
-    cidco: cidcoMap,
-    panchavati: panchavatiMap,
-    satpur: satpurMap,
-    gangapur: gangapurMap,
-    dwarka: dwarkaMap,
-    deolali: deolaliMap,
-  }
-  const areaMapImage = areaMapImages[area.id] ?? cidcoMap
-  const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(null)
-  useEffect(() => {
-    setSelectedFacilityId(null)
-  }, [area.id, activeFacilityCategory])
   const areaFacilities = demoData.facilities.filter((facility) => facility.areaId === area.id)
   const filteredAreaFacilities = areaFacilities.filter(
     (facility) => activeFacilityCategory === 'all' || facility.category === activeFacilityCategory,
   )
-  const mappedFacilityMarkers = filteredAreaFacilities.filter(
-    (facility) =>
-      typeof facility.coordinates?.lat === 'number' &&
-      typeof facility.coordinates?.lng === 'number' &&
-      Number.isFinite(facility.coordinates.lat) &&
-      Number.isFinite(facility.coordinates.lng),
-  )
-  const selectedFacility =
-    mappedFacilityMarkers.find((facility) => facility.id === selectedFacilityId) ?? null
-  const markerBounds = mappedFacilityMarkers.reduce(
-    (bounds, facility) => {
-      const lat = facility.coordinates?.lat ?? 0
-      const lng = facility.coordinates?.lng ?? 0
-
-      return {
-        minLat: Math.min(bounds.minLat, lat),
-        maxLat: Math.max(bounds.maxLat, lat),
-        minLng: Math.min(bounds.minLng, lng),
-        maxLng: Math.max(bounds.maxLng, lng),
-      }
-    },
-    { minLat: Number.POSITIVE_INFINITY, maxLat: Number.NEGATIVE_INFINITY, minLng: Number.POSITIVE_INFINITY, maxLng: Number.NEGATIVE_INFINITY },
-  )
-  const markerPosition = (facility: Facility) => {
-    const lat = facility.coordinates?.lat ?? 0
-    const lng = facility.coordinates?.lng ?? 0
-    const latRange = markerBounds.maxLat - markerBounds.minLat || 1
-    const lngRange = markerBounds.maxLng - markerBounds.minLng || 1
-
-    return {
-      left: 7 + ((lng - markerBounds.minLng) / lngRange) * 86,
-      top: 7 + ((markerBounds.maxLat - lat) / latRange) * 86,
-    }
-  }
-  const selectedFacilityPosition = selectedFacility ? markerPosition(selectedFacility) : null
   const availableFacilityCategories = facilityCategories.filter((category) =>
     areaFacilities.some((facility) => facility.category === category),
   )
+
+  // Dynamically calculate counts according to mapped facilities data
   const facilityAccessCards = [
     { category: 'Hospitals', Icon: HeartPulse },
     { category: 'Schools', Icon: GraduationCap },
@@ -172,10 +121,10 @@ function AreaAnalysisPage() {
     { category: 'Parks', Icon: TreePine },
   ].map((facility) => ({
     ...facility,
-    demoCount: areaFacilities.find((item) => item.category === facility.category)?.demoCount ?? null,
+    demoCount: areaFacilities.filter((item) => item.category === facility.category).length,
   }))
   const visibleFacilityAccessCards = facilityAccessCards.filter(
-    (facility) => activeFacilityCategory === 'all' || facility.category === activeFacilityCategory,
+    (facility) => facility.demoCount > 0 && (activeFacilityCategory === 'all' || facility.category === activeFacilityCategory),
   )
 
   return (
@@ -188,46 +137,34 @@ function AreaAnalysisPage() {
         <SectionHeader id="area-title" level={1} title={area.name} description="Area Analysis" />
       </section>
 
-      <section aria-label={`${area.name} map`} className="mt-8">
-        <Card className="overflow-hidden p-0" padding="none">
-          <div className="relative h-[22rem] w-full overflow-hidden bg-[#dfe3dc] sm:h-[24rem]">
-            <img
-              alt={`${area.name} demo map`}
-              className="h-full w-full object-cover"
-              src={areaMapImage}
-            />
-            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/40 via-black/10 to-transparent px-4 py-3 text-white sm:px-5">
-              <div className="flex items-center gap-2">
-                <MapPin aria-hidden="true" size={18} />
-                <span className="text-sm font-semibold">{area.name}</span>
-              </div>
-              <Badge tone="warning">DEMO MAP</Badge>
-            </div>
-          </div>
-        </Card>
+      {/* 1. Area Location Showcase Map (Location Only) */}
+      <section aria-label={`${area.name} location map`} className="mt-8">
+        <AreaLocationMap
+          areaId={area.id}
+          areaName={area.name}
+        />
       </section>
 
-      <section aria-labelledby="area-summary-title" className="mt-10">
-        <SectionHeader id="area-summary-title" level={2} title="Area Summary" />
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(14rem,0.7fr)_minmax(0,1.3fr)]">
-          <Card>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-muted">Area UIS</p>
-                <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">
-                  {analysis.uisDemoValue.toFixed(1)}<span className="ml-1 text-base font-medium text-muted">/ {analysis.uisScale}</span>
-                </p>
-              </div>
-              <Badge tone="warning">DEMO</Badge>
+      {/* 2. Standout Area UIS Spotlight */}
+      <section aria-labelledby="area-summary-title" className="mt-10 space-y-4">
+        <SectionHeader id="area-summary-title" level={2} title="Area Summary & UIS Benchmark" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(16rem,0.85fr)]">
+          <AreaUisHeroCard
+            areaName={area.name}
+            uisScore={analysis.uisDemoValue}
+            scale={analysis.uisScale}
+          />
+          <Card className="flex flex-col justify-between border-line">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted">CLASSIFIED PROFILE</p>
+              <h3 className="mt-2 text-lg font-bold text-ink">{developmentClassification.profileName}</h3>
+              <p className="mt-2.5 text-xs sm:text-sm leading-6 text-muted">{developmentProfileExplanation}</p>
             </div>
-            <p className="mt-3 text-sm leading-6 text-muted">
-              This is the existing overall demo score. Its calculation method is not documented in this prototype, so it is shown as provided and is not recalculated from the indicators.
-            </p>
-          </Card>
-          <Card>
-            <p className="text-sm font-medium text-muted">Development profile</p>
-            <h3 className="mt-2 text-lg font-semibold text-ink">{developmentClassification.profileName}</h3>
-            <p className="mt-2 text-sm leading-6 text-muted">{developmentProfileExplanation}</p>
+            <div className="mt-4 pt-3 border-t border-line/60">
+              <span className="text-[11px] text-muted">
+                Profile category determined from 7 indicator distribution bands.
+              </span>
+            </div>
           </Card>
         </div>
       </section>
@@ -316,123 +253,151 @@ function AreaAnalysisPage() {
         </div>
       </section>
 
+      {/* 2. Facilities Overview Section */}
       <section aria-labelledby="facilities-title" className="mt-12">
         <SectionHeader
           id="facilities-title"
           level={2}
           title="Facilities Overview"
-          description="Category counts are illustrative demo values, not verified totals or proof of access or coverage."
+          description="Calculated category counts and interactive map showcasing all facilities in this area."
         />
-        <div className="mt-4 grid gap-5">
-            <div aria-label={`${area.name} demo facility counts`} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {visibleFacilityAccessCards.map(({ category, Icon, demoCount }) => (
-                <Card className="flex items-center gap-3 border-line p-3" key={category}>
-                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
-                    <Icon aria-hidden="true" size={20} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink">{category}</p>
-                    <p className="mt-1 text-lg font-semibold tabular-nums text-ink">
-                      {demoCount ?? 'No demo count'}
-                    </p>
-                    <p className="text-xs text-muted">Illustrative total in {area.name}</p>
-                  </div>
-                </Card>
-              ))}
-            </div>
+        <div className="mt-6 space-y-6">
+          {/* Facility Summary Cards (Calculated from Data) */}
+          <div aria-label={`${area.name} facility counts`} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleFacilityAccessCards.map(({ category, Icon, demoCount }) => (
+              <Card
+                className={`flex items-center gap-3 border-line p-3.5 cursor-pointer transition-all ${
+                  activeFacilityCategory === category ? 'ring-2 ring-brand border-transparent bg-brand-soft/20 shadow-sm' : 'hover:border-slate-300'
+                }`}
+                key={category}
+                onClick={() => setActiveFacilityCategory(activeFacilityCategory === category ? 'all' : category as FacilityCategory)}
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+                  <Icon aria-hidden="true" size={22} />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">{category}</p>
+                  <p className="mt-0.5 text-xl font-bold tabular-nums text-ink">
+                    {demoCount}
+                  </p>
+                  <p className="text-xs text-muted">Facilities plotted in {area.name}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
 
-            <fieldset>
-              <legend className="text-sm font-semibold text-ink">Facility category</legend>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  aria-pressed={activeFacilityCategory === 'all'}
-                  className={`min-h-9 rounded-control border px-3 text-sm font-medium ${activeFacilityCategory === 'all' ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-muted hover:text-ink'}`}
-                  onClick={() => setActiveFacilityCategory('all')}
-                  type="button"
-                >
-                  All categories
-                </button>
-                {availableFacilityCategories.map((category) => (
+          {/* Interactive Facilities Map Card (All Facilities Visible & Filterable) */}
+          <AreaFacilitiesMap
+            areaId={area.id}
+            areaName={area.name}
+            facilities={areaFacilities}
+            activeCategory={activeFacilityCategory}
+            onCategoryChange={setActiveFacilityCategory}
+          />
+
+          {/* Category Filter Pills */}
+          <fieldset>
+            <legend className="text-sm font-semibold text-ink">Filter by category</legend>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                aria-pressed={activeFacilityCategory === 'all'}
+                className={`min-h-9 rounded-control border px-3.5 text-xs font-semibold transition-all ${
+                  activeFacilityCategory === 'all'
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-line bg-surface text-muted hover:text-ink'
+                }`}
+                onClick={() => setActiveFacilityCategory('all')}
+                type="button"
+              >
+                All categories ({areaFacilities.length})
+              </button>
+              {availableFacilityCategories.map((category) => {
+                const count = areaFacilities.filter((f) => f.category === category).length
+                const isSelected = activeFacilityCategory === category
+                const color = CATEGORY_COLORS[category]
+                return (
                   <button
-                    aria-pressed={activeFacilityCategory === category}
-                    className={`min-h-9 rounded-control border px-3 text-sm font-medium ${activeFacilityCategory === category ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-muted hover:text-ink'}`}
+                    aria-pressed={isSelected}
+                    className={`min-h-9 flex items-center gap-1.5 rounded-control border px-3.5 text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'text-white shadow-sm'
+                        : 'border-line bg-surface text-muted hover:text-ink'
+                    }`}
+                    style={{
+                      backgroundColor: isSelected ? color : undefined,
+                      borderColor: isSelected ? color : undefined,
+                    }}
                     key={category}
                     onClick={() => setActiveFacilityCategory(category)}
                     type="button"
                   >
-                    {category}
+                    <span>{CATEGORY_ICONS[category]}</span>
+                    <span>{category}</span>
+                    <span className={isSelected ? 'text-white/80' : 'text-slate-400'}>({count})</span>
                   </button>
-                ))}
-              </div>
-            </fieldset>
+                )
+              })}
+            </div>
+          </fieldset>
 
-            <div>
-              <Card className="overflow-hidden p-0" padding="none">
-                <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-                  <h3 className="text-sm font-semibold text-ink">Facilities Map</h3>
-                  <Badge tone="warning">ILLUSTRATIVE MAP</Badge>
+          {/* Mapped Facilities Detailed List */}
+          <div>
+            <Card className="overflow-hidden" padding="none">
+              <div className="flex items-center justify-between gap-3 border-b border-line bg-slate-50/50 px-4 py-3 sm:px-6">
+                <div>
+                  <h3 className="text-sm font-bold text-ink">Mapped Facilities in {area.name}</h3>
+                  <p className="text-xs text-muted">Showing {filteredAreaFacilities.length} facilities corresponding to the map above</p>
                 </div>
-                <div className="relative h-72 bg-canvas sm:h-[24rem]">
-                  <img
-                    alt={`${area.name} illustrative area map; facility locations are shown as demo markers`}
-                    className="h-full w-full object-cover"
-                    src={areaMapImage}
-                  />
-                  {mappedFacilityMarkers.length > 0 ? (
-                    <>
-                      {mappedFacilityMarkers.map((facility, index) => {
-                        const position = markerPosition(facility)
-                        const isSelected = selectedFacilityId === facility.id
-
-                        return (
-                          <button
-                            aria-label={`${facility.name ?? `${facility.category} ${index + 1}`} on map`}
-                            className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
-                            key={facility.id}
-                            onClick={() => setSelectedFacilityId(isSelected ? null : facility.id)}
-                            style={{ left: `${position.left}%`, top: `${position.top}%` }}
-                            type="button"
-                          >
-                            <img
-                              alt=""
-                              className="h-8 w-8 object-contain drop-shadow-md"
-                              src={googleMapsPin}
-                            />
-                          </button>
-                        )
-                      })}
-                      {selectedFacility && selectedFacilityPosition ? (
-                        <div
-                          className="absolute z-20 w-[min(14rem,calc(100%-1rem))] rounded-xl border border-line bg-white/95 p-3 shadow-card backdrop-blur-sm"
+                <Badge className="bg-slate-100 text-slate-700 font-semibold text-xs">
+                  {filteredAreaFacilities.length} {activeFacilityCategory === 'all' ? 'Total' : activeFacilityCategory}
+                </Badge>
+              </div>
+              <div className="divide-y divide-line max-h-96 overflow-y-auto p-2">
+                {filteredAreaFacilities.map((facility) => {
+                  const color = CATEGORY_COLORS[facility.category] || '#64748b'
+                  const icon = CATEGORY_ICONS[facility.category] || '📍'
+                  return (
+                    <div
+                      key={facility.id}
+                      className="flex items-center justify-between gap-3 rounded-lg p-3 transition-colors hover:bg-slate-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold shadow-xs"
                           style={{
-                            left: `clamp(0.5rem, calc(${selectedFacilityPosition.left}% - 7rem), calc(100% - 15rem))`,
-                            top: selectedFacilityPosition.top < 35
-                              ? `calc(${selectedFacilityPosition.top}% + 1rem)`
-                              : `${selectedFacilityPosition.top}%`,
-                            transform: selectedFacilityPosition.top < 35
-                              ? undefined
-                              : 'translateY(calc(-100% - 1rem))',
+                            background: `${color}15`,
+                            border: `1.5px solid ${color}40`,
                           }}
                         >
-                          <p className="text-sm font-semibold text-ink">{selectedFacility.name ?? `${selectedFacility.category} ${mappedFacilityMarkers.indexOf(selectedFacility) + 1}`}</p>
-                          <p className="mt-1 text-xs font-medium text-brand">{selectedFacility.category}</p>
-                          {selectedFacility.details ? (
-                            <p className="mt-1 text-xs leading-5 text-muted">{selectedFacility.details}</p>
-                          ) : null}
+                          {icon}
+                        </span>
+                        <div>
+                          <p className="text-sm font-bold text-ink">{facility.name}</p>
+                          <p className="text-xs text-muted">{facility.details}</p>
                         </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-4 pb-4 pt-10 text-white">
-                      <p className="text-sm font-semibold">{area.name}</p>
-                      <p className="mt-1 text-xs">
-                        Facility-level location data is unavailable for this demo, so no markers are shown for this selection.
-                      </p>
+                      </div>
+                      <div className="text-right">
+                        <span
+                          className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                          style={{
+                            backgroundColor: `${color}15`,
+                            color: color,
+                          }}
+                        >
+                          {facility.category}
+                        </span>
+                        {facility.coordinates && (
+                          <p className="mt-1 text-[11px] text-muted tabular-nums">
+                            GPS: {facility.coordinates.lat.toFixed(4)}, {facility.coordinates.lng.toFixed(4)}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              </Card>
-            </div>
+                  )
+                })}
+              </div>
+            </Card>
+          </div>
         </div>
       </section>
 
@@ -448,4 +413,4 @@ function AreaAnalysisPage() {
   )
 }
 
-export default AreaAnalysisPage
+export default AreaAnalysisPage
